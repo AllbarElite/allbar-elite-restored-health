@@ -25,20 +25,24 @@
 <body>
 <div id="root"></div>
 <script>
+  window.__lastError = null;
   window.addEventListener("error", function (e) {
-    console.error("Caught error:", e.error || e.message);
+    window.__lastError = (e.error && e.error.message) || e.message || "Unknown error";
+    console.error("Caught error:", window.__lastError, e.filename, e.lineno);
   });
   setTimeout(function () {
     var root = document.getElementById("root");
     if (root && root.children.length === 0) {
+      var detail = window.__lastError ? ('<p style="font-size:12px;color:#B0507E;margin-top:10px;background:#fdf0f0;padding:10px;border-radius:8px;word-break:break-word;">' + window.__lastError + '</p>') : '<p style="font-size:12px;color:#8C8371;margin-top:10px;">No error was captured \u2014 a resource (like React or Supabase) may have failed to load. Check your internet connection and try refreshing.</p>';
       root.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;background:#FDF9F0;padding:24px;">' +
         '<div style="max-width:420px;text-align:center;background:#fff;border-radius:20px;padding:28px;border:1px solid #E7E0D0;">' +
         '<p style="font-size:32px;margin:0;">\u26A0\uFE0F</p>' +
         '<h2 style="margin:10px 0;">This page did not load correctly</h2>' +
-        '<p style="font-size:13px;color:#8C8371;margin:0;">Something failed before the app could start. Try refreshing the page. If this keeps happening, take a screenshot of this message and the browser console (press F12) and share it.</p>' +
+        '<p style="font-size:13px;color:#8C8371;margin:0;">Something failed before the app could start.</p>' +
+        detail +
         '</div></div>';
     }
-  }, 4000);
+  }, 8000);
 </script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useRef } = React;
