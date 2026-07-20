@@ -490,8 +490,10 @@ function App() {
     }, 700);
     return () => clearTimeout(saveTimer.current);
   }, [day, dayLoaded, activeMemberId]);
+  const [memberError, setMemberError] = useState(null);
   const addMember = async form => {
     setSavingMember(true);
+    setMemberError(null);
     let photoUrl = null;
     if (form.photoFile) {
       const ext = form.photoFile.name.split(".").pop();
@@ -525,6 +527,8 @@ function App() {
       setMembers(prev => [...prev, newMember]);
       setActiveMemberId(newMember.id);
       setShowAddMember(false);
+    } else {
+      setMemberError(error.message || "Could not save this profile. Please try again.");
     }
     setSavingMember(false);
   };
@@ -724,7 +728,8 @@ function App() {
     return /*#__PURE__*/React.createElement(MemberOnboarding, {
       onSave: addMember,
       saving: savingMember,
-      onCancel: members.length > 0 ? () => setShowAddMember(false) : null
+      onCancel: members.length > 0 ? () => setShowAddMember(false) : null,
+      error: memberError
     });
   }
   const field = "w-field";
@@ -2296,7 +2301,8 @@ function GoalModal({
 function MemberOnboarding({
   onSave,
   saving,
-  onCancel
+  onCancel,
+  error
 }) {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -2582,7 +2588,22 @@ function MemberOnboarding({
   }, "Optional — can be turned on or off anytime later.")), /*#__PURE__*/React.createElement(Toggle, {
     on: trackDigestive,
     onClick: () => setTrackDigestive(!trackDigestive)
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), error && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#FDF0F0",
+      border: "1px solid #E8B8B8",
+      borderRadius: 12,
+      padding: "10px 12px",
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      color: "#B0507E",
+      fontWeight: 600
+    }
+  }, "Couldn't save: ", error)), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 10,
