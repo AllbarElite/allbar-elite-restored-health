@@ -370,7 +370,10 @@ function GoalRing({
     fontFamily: "Inter"
   }, done ? "✓" : `${count}/${target}`));
 }
-function App() {
+function Dashboard({
+  authUser,
+  onLogout
+}) {
   const [members, setMembers] = useState([]);
   const [activeMemberId, setActiveMemberId] = useState(null);
   const [loadingMembers, setLoadingMembers] = useState(true);
@@ -518,7 +521,8 @@ function App() {
       height_in: form.height ? Number(form.height) : null,
       wake_time: form.wakeTime || "07:00",
       sleep_time: form.sleepTime || "21:00",
-      track_digestive: !!form.trackDigestive
+      track_digestive: !!form.trackDigestive,
+      user_id: authUser.id
     };
     const {
       error
@@ -867,7 +871,18 @@ function App() {
       fontWeight: 600,
       fontSize: 14
     }
-  }, "+ Add")))), /*#__PURE__*/React.createElement("main", {
+  }, "+ Add")), /*#__PURE__*/React.createElement("button", {
+    onClick: onLogout,
+    style: {
+      background: "none",
+      border: "none",
+      color: "rgba(255,255,255,0.7)",
+      fontSize: 12,
+      marginTop: 12,
+      padding: 0,
+      textDecoration: "underline"
+    }
+  }, "Log out"))), /*#__PURE__*/React.createElement("main", {
     style: {
       maxWidth: 640,
       margin: "0 auto",
@@ -2665,6 +2680,271 @@ function MemberOnboarding({
       fontWeight: 700
     }
   }, saving ? "Saving..." : "Create profile"))));
+}
+function AuthScreen({
+  onAuthed
+}) {
+  const [mode, setMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
+  const submit = async () => {
+    setLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      if (mode === "signin") {
+        const {
+          data,
+          error
+        } = await sb.auth.signInWithPassword({
+          email,
+          password
+        });
+        if (error) throw error;
+        onAuthed(data.user);
+      } else {
+        const {
+          data,
+          error
+        } = await sb.auth.signUp({
+          email,
+          password
+        });
+        if (error) throw error;
+        if (data.session) {
+          onAuthed(data.user);
+        } else {
+          setInfo("Almost there — check your email to confirm your account, then sign in below.");
+          setMode("signin");
+        }
+      }
+    } catch (e) {
+      setError(e.message || "Something went wrong.");
+    }
+    setLoading(false);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#fff",
+      borderRadius: 24,
+      padding: 32,
+      maxWidth: 400,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: LOGO_SRC,
+    style: {
+      height: 36
+    },
+    alt: "logo"
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: PALETTE.sageDeep,
+      textTransform: "uppercase",
+      letterSpacing: "0.1em"
+    }
+  }, "Restored Health")), /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 22,
+      marginTop: 0
+    }
+  }, mode === "signin" ? "Welcome back" : "Create your account"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: PALETTE.muted,
+      marginBottom: 16
+    }
+  }, mode === "signin" ? "Sign in to see your family's tracking." : "Sign up to start tracking for your family."), /*#__PURE__*/React.createElement("input", {
+    type: "email",
+    value: email,
+    onChange: e => setEmail(e.target.value),
+    placeholder: "Email",
+    autoComplete: "email",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      marginBottom: 10
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: password,
+    onChange: e => setPassword(e.target.value),
+    placeholder: "Password",
+    autoComplete: mode === "signin" ? "current-password" : "new-password",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      marginBottom: 16
+    }
+  }), error && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#B0507E",
+      marginBottom: 12
+    }
+  }, error), info && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.sageDeep,
+      marginBottom: 12
+    }
+  }, info), /*#__PURE__*/React.createElement("button", {
+    disabled: loading || !email || !password,
+    onClick: submit,
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15,
+      opacity: loading ? 0.7 : 1
+    }
+  }, loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Sign Up"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setMode(mode === "signin" ? "signup" : "signin");
+      setError(null);
+      setInfo(null);
+    },
+    style: {
+      width: "100%",
+      background: "none",
+      border: "none",
+      marginTop: 14,
+      fontSize: 13,
+      color: PALETTE.sageDeep,
+      fontWeight: 600,
+      padding: 8
+    }
+  }, mode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in")));
+}
+function App() {
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
+  useEffect(() => {
+    let unsub = null;
+    (async () => {
+      try {
+        sb = await getSupabaseClient();
+        const {
+          data: {
+            session
+          }
+        } = await sb.auth.getSession();
+        setAuthUser(session?.user || null);
+        const {
+          data: listener
+        } = sb.auth.onAuthStateChange((_event, session) => {
+          setAuthUser(session?.user || null);
+        });
+        unsub = () => listener.subscription.unsubscribe();
+      } catch (e) {
+        setAuthError(e.message || "Could not connect to the database.");
+      }
+      setAuthLoading(false);
+    })();
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+  if (authLoading) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: PALETTE.cream,
+        fontFamily: "Inter"
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        color: PALETTE.muted
+      }
+    }, "Loading..."));
+  }
+  if (authError) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: PALETTE.cream,
+        fontFamily: "Inter",
+        padding: 24
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        maxWidth: 420,
+        textAlign: "center",
+        background: "#fff",
+        borderRadius: 20,
+        padding: 28,
+        border: `1px solid ${PALETTE.line}`
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 32,
+        margin: 0
+      }
+    }, "⚠️"), /*#__PURE__*/React.createElement("h2", {
+      className: "display",
+      style: {
+        fontSize: 18,
+        margin: "10px 0"
+      }
+    }, "Couldn't connect"), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 13,
+        color: PALETTE.muted,
+        margin: 0
+      }
+    }, authError)));
+  }
+  if (!authUser) {
+    return /*#__PURE__*/React.createElement(AuthScreen, {
+      onAuthed: setAuthUser
+    });
+  }
+  return /*#__PURE__*/React.createElement(Dashboard, {
+    authUser: authUser,
+    onLogout: async () => {
+      await sb.auth.signOut();
+      setAuthUser(null);
+    }
+  });
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 </script>
