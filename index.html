@@ -52,8 +52,17 @@ const {
 } = React;
 const SUPABASE_URL = "https://cbjwlqnogrzvgwntuuad.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_xA_HXWiPt83qtk2N3fsTjw_JjZ7WKGi";
+const VAPID_PUBLIC_KEY = "BNRi0E9naG7WESpXuup6eiAXja4whIClBeWMq6DV17cKxFIF61WTx2mdiny1QqsDJyO9j8Im1_haE6oJ-1aPGGQ";
 let sb = null;
 let INIT_ERROR = null;
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
 function getSupabaseClient() {
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -91,7 +100,7 @@ const PALETTE = {
   muted: "#8C8371"
 };
 const MEMBER_COLORS = ["#0E8C74", "#E8A33D", "#E36A50", "#3D8FBF", "#8B5FB0", "#B0507E", "#D4547A", "#1A1A1A", "#C9A64A"];
-const AVATAR_EMOJIS = ["🌸", "🌻", "🦄", "🐶", "🐱", "🦁", "🐘", "🐻", "❤️", "💜", "👑", "🤴", "👸", "⭐", "🌈", "🌙"];
+const AVATAR_EMOJIS = ["🌸", "🌻", "🦄", "🐶", "🐱", "🦁", "🐘", "🐻", "❤️", "💜", "⭐", "🌈", "🌙", "👑", "🤴", "🤴🏻", "🤴🏽", "🤴🏿", "👸", "👸🏻", "👸🏽", "👸🏿"];
 const BEVERAGE_OPTIONS = ["Tea", "Water", "Juice"];
 const SYMPTOM_TAGS = [{
   key: "nausea",
@@ -952,6 +961,8 @@ function Dashboard({
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
+  const [notifStatus, setNotifStatus] = useState("idle");
+  const [notifError, setNotifError] = useState("");
   const [savingMember, setSavingMember] = useState(false);
   const [day, setDay] = useState(emptyDayData());
   const [dayLoaded, setDayLoaded] = useState(false);
@@ -1106,7 +1117,8 @@ function Dashboard({
       wake_time: form.wakeTime || "07:00",
       sleep_time: form.sleepTime || "21:00",
       enabled_features: form.features || DEFAULT_FEATURES,
-      user_id: authUser.id
+      user_id: authUser.id,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York"
     };
     const {
       error
@@ -1177,6 +1189,43 @@ function Dashboard({
       setMemberError(error.message || "Could not delete this profile. Please try again.");
     }
     setSavingMember(false);
+  };
+  const subscribeToNotifications = async () => {
+    setNotifStatus("subscribing");
+    setNotifError("");
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        throw new Error("This browser doesn't support notifications. On iPhone, add this site to your Home Screen first, then try again from there.");
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        throw new Error("Notifications were blocked. You can allow them in your browser's site settings.");
+      }
+      const reg = await navigator.serviceWorker.register("sw.js");
+      await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+      }
+      const subJson = sub.toJSON();
+      const {
+        error
+      } = await sb.from("push_subscriptions").insert({
+        id: uid("sub"),
+        user_id: authUser.id,
+        endpoint: subJson.endpoint,
+        p256dh: subJson.keys.p256dh,
+        auth_key: subJson.keys.auth
+      });
+      if (error && !error.message?.includes("duplicate")) throw error;
+      setNotifStatus("subscribed");
+    } catch (e) {
+      setNotifStatus("error");
+      setNotifError(e.message || "Could not turn on notifications.");
+    }
   };
   const addGoal = async (name, target, kind = "custom", dosage = null) => {
     const g = {
@@ -1540,7 +1589,8 @@ function Dashboard({
       display: "flex",
       alignItems: "center",
       gap: 14,
-      marginTop: 12
+      marginTop: 12,
+      flexWrap: "wrap"
     }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowEditProfile(true),
@@ -1562,7 +1612,25 @@ function Dashboard({
       padding: 0,
       textDecoration: "underline"
     }
-  }, "Log out")))), /*#__PURE__*/React.createElement("main", {
+  }, "Log out"), /*#__PURE__*/React.createElement("button", {
+    onClick: subscribeToNotifications,
+    disabled: notifStatus === "subscribing",
+    style: {
+      background: "none",
+      border: "none",
+      color: notifStatus === "subscribed" ? PALETTE.gold : "rgba(255,255,255,0.7)",
+      fontSize: 12,
+      padding: 0,
+      textDecoration: "underline",
+      fontWeight: notifStatus === "subscribed" ? 700 : 400
+    }
+  }, notifStatus === "subscribed" ? "✓ Water reminders on" : notifStatus === "subscribing" ? "Turning on..." : "Turn on water reminders")), notifStatus === "error" && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.gold,
+      marginTop: 6
+    }
+  }, notifError))), /*#__PURE__*/React.createElement("main", {
     style: {
       maxWidth: 640,
       margin: "0 auto",
@@ -4688,9 +4756,10 @@ function EditProfileModal({
 function AuthScreen({
   onAuthed
 }) {
-  const [mode, setMode] = useState("signin");
+  const [mode, setMode] = useState("signin"); // signin | signup | forgot
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
@@ -4709,7 +4778,7 @@ function AuthScreen({
         });
         if (error) throw error;
         onAuthed(data.user);
-      } else {
+      } else if (mode === "signup") {
         const {
           data,
           error
@@ -4724,7 +4793,226 @@ function AuthScreen({
           setInfo("Almost there — check your email to confirm your account, then sign in below.");
           setMode("signin");
         }
+      } else if (mode === "forgot") {
+        const {
+          error
+        } = await sb.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        });
+        if (error) throw error;
+        setInfo("Check your email for a link to reset your password.");
       }
+    } catch (e) {
+      setError(e.message || "Something went wrong.");
+    }
+    setLoading(false);
+  };
+  const titles = {
+    signin: "Welcome back",
+    signup: "Create your account",
+    forgot: "Reset your password"
+  };
+  const subtitles = {
+    signin: "Sign in to see your family's tracking.",
+    signup: "Sign up to start tracking for your family.",
+    forgot: "Enter your email and we'll send you a link to set a new password."
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#fff",
+      borderRadius: 24,
+      padding: 32,
+      maxWidth: 400,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: LOGO_SRC,
+    style: {
+      height: 36
+    },
+    alt: "logo"
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: PALETTE.sageDeep,
+      textTransform: "uppercase",
+      letterSpacing: "0.1em"
+    }
+  }, "Restored Health")), /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 22,
+      marginTop: 0
+    }
+  }, titles[mode]), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: PALETTE.muted,
+      marginBottom: 16
+    }
+  }, subtitles[mode]), /*#__PURE__*/React.createElement("input", {
+    type: "email",
+    value: email,
+    onChange: e => setEmail(e.target.value),
+    placeholder: "Email",
+    autoComplete: "email",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      marginBottom: 10
+    }
+  }), mode !== "forgot" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "relative",
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: showPassword ? "text" : "password",
+    value: password,
+    onChange: e => setPassword(e.target.value),
+    placeholder: "Password",
+    autoComplete: mode === "signin" ? "current-password" : "new-password",
+    style: {
+      width: "100%",
+      padding: 12,
+      paddingRight: 52,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      boxSizing: "border-box"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setShowPassword(!showPassword),
+    style: {
+      position: "absolute",
+      right: 6,
+      top: "50%",
+      transform: "translateY(-50%)",
+      background: "none",
+      border: "none",
+      fontSize: 12,
+      fontWeight: 700,
+      color: PALETTE.sageDeep,
+      padding: 8
+    }
+  }, showPassword ? "Hide" : "Show")), mode === "signin" && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setMode("forgot");
+      setError(null);
+      setInfo(null);
+    },
+    style: {
+      background: "none",
+      border: "none",
+      fontSize: 12,
+      color: PALETTE.muted,
+      padding: 0,
+      marginBottom: 16,
+      textDecoration: "underline"
+    }
+  }, "Forgot password?"), mode !== "signin" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 8
+    }
+  }), error && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#B0507E",
+      marginBottom: 12
+    }
+  }, error), info && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.sageDeep,
+      marginBottom: 12
+    }
+  }, info), /*#__PURE__*/React.createElement("button", {
+    disabled: loading || !email || mode !== "forgot" && !password,
+    onClick: submit,
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15,
+      opacity: loading ? 0.7 : 1
+    }
+  }, loading ? "Please wait..." : mode === "signin" ? "Sign In" : mode === "signup" ? "Sign Up" : "Send reset link"), mode === "forgot" ? /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setMode("signin");
+      setError(null);
+      setInfo(null);
+    },
+    style: {
+      width: "100%",
+      background: "none",
+      border: "none",
+      marginTop: 14,
+      fontSize: 13,
+      color: PALETTE.sageDeep,
+      fontWeight: 600,
+      padding: 8
+    }
+  }, "Back to sign in") : /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setMode(mode === "signin" ? "signup" : "signin");
+      setError(null);
+      setInfo(null);
+    },
+    style: {
+      width: "100%",
+      background: "none",
+      border: "none",
+      marginTop: 14,
+      fontSize: 13,
+      color: PALETTE.sageDeep,
+      fontWeight: 600,
+      padding: 8
+    }
+  }, mode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in")));
+}
+function ResetPasswordScreen({
+  onDone
+}) {
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const submit = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const {
+        error
+      } = await sb.auth.updateUser({
+        password
+      });
+      if (error) throw error;
+      onDone();
     } catch (e) {
       setError(e.message || "Something went wrong.");
     }
@@ -4774,54 +5062,55 @@ function AuthScreen({
       fontSize: 22,
       marginTop: 0
     }
-  }, mode === "signin" ? "Welcome back" : "Create your account"), /*#__PURE__*/React.createElement("p", {
+  }, "Set a new password"), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       color: PALETTE.muted,
       marginBottom: 16
     }
-  }, mode === "signin" ? "Sign in to see your family's tracking." : "Sign up to start tracking for your family."), /*#__PURE__*/React.createElement("input", {
-    type: "email",
-    value: email,
-    onChange: e => setEmail(e.target.value),
-    placeholder: "Email",
-    autoComplete: "email",
+  }, "Choose a new password for your account."), /*#__PURE__*/React.createElement("div", {
     style: {
-      width: "100%",
-      padding: 12,
-      borderRadius: 12,
-      border: `1px solid ${PALETTE.line}`,
-      fontSize: 15,
-      marginBottom: 10
-    }
-  }), /*#__PURE__*/React.createElement("input", {
-    type: "password",
-    value: password,
-    onChange: e => setPassword(e.target.value),
-    placeholder: "Password",
-    autoComplete: mode === "signin" ? "current-password" : "new-password",
-    style: {
-      width: "100%",
-      padding: 12,
-      borderRadius: 12,
-      border: `1px solid ${PALETTE.line}`,
-      fontSize: 15,
+      position: "relative",
       marginBottom: 16
     }
-  }), error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("input", {
+    type: showPassword ? "text" : "password",
+    value: password,
+    onChange: e => setPassword(e.target.value),
+    placeholder: "New password",
+    autoComplete: "new-password",
+    style: {
+      width: "100%",
+      padding: 12,
+      paddingRight: 52,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      boxSizing: "border-box"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setShowPassword(!showPassword),
+    style: {
+      position: "absolute",
+      right: 6,
+      top: "50%",
+      transform: "translateY(-50%)",
+      background: "none",
+      border: "none",
+      fontSize: 12,
+      fontWeight: 700,
+      color: PALETTE.sageDeep,
+      padding: 8
+    }
+  }, showPassword ? "Hide" : "Show")), error && /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       color: "#B0507E",
       marginBottom: 12
     }
-  }, error), info && /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 12,
-      color: PALETTE.sageDeep,
-      marginBottom: 12
-    }
-  }, info), /*#__PURE__*/React.createElement("button", {
-    disabled: loading || !email || !password,
+  }, error), /*#__PURE__*/React.createElement("button", {
+    disabled: loading || password.length < 6,
     onClick: submit,
     style: {
       width: "100%",
@@ -4834,28 +5123,13 @@ function AuthScreen({
       fontSize: 15,
       opacity: loading ? 0.7 : 1
     }
-  }, loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Sign Up"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setMode(mode === "signin" ? "signup" : "signin");
-      setError(null);
-      setInfo(null);
-    },
-    style: {
-      width: "100%",
-      background: "none",
-      border: "none",
-      marginTop: 14,
-      fontSize: 13,
-      color: PALETTE.sageDeep,
-      fontWeight: 600,
-      padding: 8
-    }
-  }, mode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in")));
+  }, loading ? "Saving..." : "Save new password")));
 }
 function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   useEffect(() => {
     let unsub = null;
     (async () => {
@@ -4869,7 +5143,8 @@ function App() {
         setAuthUser(session?.user || null);
         const {
           data: listener
-        } = sb.auth.onAuthStateChange((_event, session) => {
+        } = sb.auth.onAuthStateChange((event, session) => {
+          if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
           setAuthUser(session?.user || null);
         });
         unsub = () => listener.subscription.unsubscribe();
@@ -4936,6 +5211,11 @@ function App() {
         margin: 0
       }
     }, authError)));
+  }
+  if (passwordRecovery) {
+    return /*#__PURE__*/React.createElement(ResetPasswordScreen, {
+      onDone: () => setPasswordRecovery(false)
+    });
   }
   if (!authUser) {
     return /*#__PURE__*/React.createElement(AuthScreen, {
