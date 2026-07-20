@@ -90,7 +90,8 @@ const PALETTE = {
   line: "#E7E0D0",
   muted: "#8C8371"
 };
-const MEMBER_COLORS = ["#0E8C74", "#E8A33D", "#E36A50", "#3D8FBF", "#8B5FB0", "#B0507E"];
+const MEMBER_COLORS = ["#0E8C74", "#E8A33D", "#E36A50", "#3D8FBF", "#8B5FB0", "#B0507E", "#D4547A", "#1A1A1A", "#C9A64A"];
+const AVATAR_EMOJIS = ["🌸", "🌻", "🦄", "🐶", "🐱", "🦁", "🐘", "🐻", "❤️", "💜", "👑", "🤴", "👸", "⭐", "🌈", "🌙"];
 const BEVERAGE_OPTIONS = ["Tea", "Water", "Juice"];
 const SYMPTOM_TAGS = [{
   key: "nausea",
@@ -402,6 +403,55 @@ function beverageOzFromDay(d) {
     });
   });
   return Math.round(total * 10) / 10;
+}
+function AvatarBadge({
+  member,
+  size = 24,
+  fontSize
+}) {
+  const fs = fontSize || Math.round(size * 0.5);
+  if (member.photo_url) {
+    return /*#__PURE__*/React.createElement("img", {
+      src: member.photo_url,
+      style: {
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        objectFit: "cover",
+        flexShrink: 0
+      }
+    });
+  }
+  if (member.avatar_emoji) {
+    return /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: member.color + "33",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: fs,
+        flexShrink: 0
+      }
+    }, member.avatar_emoji);
+  }
+  return /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: size,
+      height: size,
+      borderRadius: "50%",
+      background: member.color,
+      color: "#fff",
+      fontSize: fs * 0.85,
+      fontWeight: 700,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, member.name.charAt(0).toUpperCase());
 }
 function Toggle({
   on,
@@ -1049,6 +1099,7 @@ function Dashboard({
       name: form.name,
       color: form.color,
       photo_url: photoUrl,
+      avatar_emoji: form.avatarEmoji || null,
       age: form.age ? Number(form.age) : null,
       weight_lbs: form.weight ? Number(form.weight) : null,
       height_in: form.height ? Number(form.height) : null,
@@ -1090,6 +1141,7 @@ function Dashboard({
       name: form.name,
       color: form.color,
       photo_url: photoUrl,
+      avatar_emoji: form.avatarEmoji || null,
       age: form.age ? Number(form.age) : null,
       weight_lbs: form.weight ? Number(form.weight) : null,
       height_in: form.height ? Number(form.height) : null,
@@ -1465,28 +1517,10 @@ function Dashboard({
         fontWeight: 600,
         fontSize: 14
       }
-    }, m.photo_url ? /*#__PURE__*/React.createElement("img", {
-      src: m.photo_url,
-      style: {
-        width: 24,
-        height: 24,
-        borderRadius: "50%",
-        objectFit: "cover"
-      }
-    }) : /*#__PURE__*/React.createElement("span", {
-      style: {
-        width: 24,
-        height: 24,
-        borderRadius: "50%",
-        background: m.color,
-        color: "#fff",
-        fontSize: 11,
-        fontWeight: 700,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center"
-      }
-    }, m.name.charAt(0).toUpperCase()), m.name);
+    }, /*#__PURE__*/React.createElement(AvatarBadge, {
+      member: m,
+      size: 24
+    }), m.name);
   }), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setMemberError(null);
@@ -3826,6 +3860,7 @@ function MemberOnboarding({
   const [color, setColor] = useState(MEMBER_COLORS[0]);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [avatarEmoji, setAvatarEmoji] = useState(null);
   const [features, setFeatures] = useState({
     ...DEFAULT_FEATURES
   });
@@ -3836,6 +3871,7 @@ function MemberOnboarding({
     if (f) {
       setPhotoFile(f);
       setPhotoPreview(URL.createObjectURL(f));
+      setAvatarEmoji(null);
     }
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -4020,7 +4056,7 @@ function MemberOnboarding({
       fontSize: 13,
       color: PALETTE.muted
     }
-  }, "Add a photo (optional) and pick a color."), /*#__PURE__*/React.createElement("div", {
+  }, "Pick a photo, an avatar, and a color."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -4032,13 +4068,13 @@ function MemberOnboarding({
       width: 64,
       height: 64,
       borderRadius: "50%",
-      background: photoPreview ? "transparent" : color,
+      background: photoPreview ? "transparent" : color + "33",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      color: "#fff",
+      color: PALETTE.ink,
       fontWeight: 700,
-      fontSize: 22,
+      fontSize: 26,
       cursor: "pointer",
       overflow: "hidden",
       border: `2px dashed ${PALETTE.line}`
@@ -4050,7 +4086,7 @@ function MemberOnboarding({
       height: "100%",
       objectFit: "cover"
     }
-  }) : name.charAt(0).toUpperCase() || "?", /*#__PURE__*/React.createElement("input", {
+  }) : avatarEmoji ? avatarEmoji : name.charAt(0).toUpperCase() || "?", /*#__PURE__*/React.createElement("input", {
     type: "file",
     accept: "image/*",
     onChange: handlePhoto,
@@ -4073,7 +4109,33 @@ function MemberOnboarding({
       background: c,
       border: color === c ? `3px solid ${PALETTE.ink}` : "none"
     }
-  }))))), step === 4 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
+  })))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted,
+      marginBottom: 8
+    }
+  }, "Or pick a fun avatar instead of a photo:"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(8, 1fr)",
+      gap: 6
+    }
+  }, AVATAR_EMOJIS.map(e => /*#__PURE__*/React.createElement("button", {
+    key: e,
+    onClick: () => {
+      setAvatarEmoji(avatarEmoji === e ? null : e);
+      setPhotoFile(null);
+      setPhotoPreview(null);
+    },
+    style: {
+      fontSize: 20,
+      padding: 6,
+      borderRadius: 10,
+      border: `2px solid ${avatarEmoji === e ? PALETTE.sageDeep : PALETTE.line}`,
+      background: avatarEmoji === e ? PALETTE.sageDeep + "22" : "#fff"
+    }
+  }, e)))), step === 4 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 22,
@@ -4190,6 +4252,7 @@ function MemberOnboarding({
       sleepTime,
       color,
       photoFile,
+      avatarEmoji,
       features
     }),
     style: {
@@ -4220,6 +4283,7 @@ function EditProfileModal({
   const [color, setColor] = useState(member.color || MEMBER_COLORS[0]);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(member.photo_url || null);
+  const [avatarEmoji, setAvatarEmoji] = useState(member.avatar_emoji || null);
   const [features, setFeatures] = useState({
     ...DEFAULT_FEATURES,
     ...(member.enabled_features || {})
@@ -4230,6 +4294,7 @@ function EditProfileModal({
     if (f) {
       setPhotoFile(f);
       setPhotoPreview(URL.createObjectURL(f));
+      setAvatarEmoji(null);
     }
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -4273,13 +4338,13 @@ function EditProfileModal({
       width: 64,
       height: 64,
       borderRadius: "50%",
-      background: photoPreview ? "transparent" : color,
+      background: photoPreview ? "transparent" : color + "33",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      color: "#fff",
+      color: PALETTE.ink,
       fontWeight: 700,
-      fontSize: 22,
+      fontSize: 26,
       cursor: "pointer",
       overflow: "hidden",
       border: `2px dashed ${PALETTE.line}`
@@ -4291,7 +4356,7 @@ function EditProfileModal({
       height: "100%",
       objectFit: "cover"
     }
-  }) : name.charAt(0).toUpperCase() || "?", /*#__PURE__*/React.createElement("input", {
+  }) : avatarEmoji ? avatarEmoji : name.charAt(0).toUpperCase() || "?", /*#__PURE__*/React.createElement("input", {
     type: "file",
     accept: "image/*",
     onChange: handlePhoto,
@@ -4314,7 +4379,34 @@ function EditProfileModal({
       background: c,
       border: color === c ? `3px solid ${PALETTE.ink}` : "none"
     }
-  })))), /*#__PURE__*/React.createElement("label", {
+  })))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted,
+      marginBottom: 8
+    }
+  }, "Or pick a fun avatar instead of a photo:"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(8, 1fr)",
+      gap: 6,
+      marginBottom: 16
+    }
+  }, AVATAR_EMOJIS.map(e => /*#__PURE__*/React.createElement("button", {
+    key: e,
+    onClick: () => {
+      setAvatarEmoji(avatarEmoji === e ? null : e);
+      setPhotoFile(null);
+      setPhotoPreview(null);
+    },
+    style: {
+      fontSize: 20,
+      padding: 6,
+      borderRadius: 10,
+      border: `2px solid ${avatarEmoji === e ? PALETTE.sageDeep : PALETTE.line}`,
+      background: avatarEmoji === e ? PALETTE.sageDeep + "22" : "#fff"
+    }
+  }, e))), /*#__PURE__*/React.createElement("label", {
     style: {
       fontSize: 12,
       color: PALETTE.muted
@@ -4521,6 +4613,7 @@ function EditProfileModal({
       sleepTime,
       color,
       photoFile,
+      avatarEmoji,
       features
     }),
     style: {
