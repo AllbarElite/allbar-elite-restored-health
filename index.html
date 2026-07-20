@@ -164,6 +164,7 @@ function emptyDayData() {
     temps: [],
     stools: [],
     urine: [],
+    weightLogs: [],
     morning: "",
     morningBevType: "",
     morningBevAmount: "",
@@ -183,6 +184,11 @@ function emptyDayData() {
     remedyNotes: "",
     workoutActivity: "",
     workoutMinutes: "",
+    sleepHours: "",
+    sleepQuality: null,
+    sleepWakeups: "",
+    onPeriod: false,
+    periodFlow: "",
     journal: ""
   };
 }
@@ -223,6 +229,55 @@ const BRISTOL_TYPES = [{
   color: "#E8C87A"
 }];
 const URINE_SHADES = ["#F5F3E7", "#F2EBC3", "#EEE29B", "#E8D274", "#DEBD4F", "#CFA23A", "#B8812B", "#8F5A1E"];
+const DEFAULT_FEATURES = {
+  meals: true,
+  remedies: true,
+  workout: true,
+  digestive: false,
+  medications: false,
+  sleep: false,
+  weight: false,
+  cycle: false,
+  visits: false
+};
+const FEATURE_LIST = [{
+  key: "meals",
+  label: "Meals & Drinks",
+  detail: "Track meals and fluids by time of day"
+}, {
+  key: "remedies",
+  label: "Massage & Heat",
+  detail: "Log massage sessions and heat pack use"
+}, {
+  key: "workout",
+  label: "Workout",
+  detail: "Log activity and duration"
+}, {
+  key: "digestive",
+  label: "Bowel & Urine",
+  detail: "Bristol scale and urine color tracking"
+}, {
+  key: "medications",
+  label: "Medications & Vitamins",
+  detail: "Track doses with reminders for what's been taken"
+}, {
+  key: "sleep",
+  label: "Sleep",
+  detail: "Hours slept, quality, and wake-ups"
+}, {
+  key: "weight",
+  label: "Weight",
+  detail: "A simple running weight log"
+}, {
+  key: "cycle",
+  label: "Menstrual Cycle",
+  detail: "Period days and flow level"
+}, {
+  key: "visits",
+  label: "Doctor Visits",
+  detail: "Notes from appointments over time"
+}];
+const FLOW_LEVELS = ["Light", "Medium", "Heavy"];
 function wellbeingEmoji(n) {
   if (n <= 2) return "🥱";
   if (n <= 4) return "😕";
@@ -378,6 +433,7 @@ function Dashboard({
   const [activeMemberId, setActiveMemberId] = useState(null);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [savingMember, setSavingMember] = useState(false);
   const [day, setDay] = useState(emptyDayData());
   const [dayLoaded, setDayLoaded] = useState(false);
@@ -385,6 +441,10 @@ function Dashboard({
   const [goals, setGoals] = useState([]);
   const [goalLogs, setGoalLogs] = useState({});
   const [showAddGoal, setShowAddGoal] = useState(false);
+  const [showAddMed, setShowAddMed] = useState(false);
+  const [showWeight, setShowWeight] = useState(false);
+  const [visits, setVisits] = useState([]);
+  const [showAddVisit, setShowAddVisit] = useState(false);
   const [weekEntries, setWeekEntries] = useState([]);
   const [showCheckin, setShowCheckin] = useState(false);
   const [showTemp, setShowTemp] = useState(false);
@@ -446,17 +506,22 @@ function Dashboard({
         data: weekRows
       }, {
         data: pastRows
+      }, {
+        data: visitRows
       }] = await Promise.all([sb.from("entries").select("*").eq("member_id", activeMemberId).eq("date", todayStr()).maybeSingle(), sb.from("goals").select("*").eq("member_id", activeMemberId).order("created_at", {
         ascending: true
       }), sb.from("entries").select("*").eq("member_id", activeMemberId).gte("date", weekAgoStr()).order("date", {
         ascending: true
       }), sb.from("entries").select("*").eq("member_id", activeMemberId).order("date", {
         ascending: false
-      }).limit(30)]);
+      }).limit(30), sb.from("visits").select("*").eq("member_id", activeMemberId).order("date", {
+        ascending: false
+      })]);
       setDay(entryRow ? entryRow.data : emptyDayData());
       setGoals(goalRows || []);
       setWeekEntries(weekRows || []);
       setPastEntries((pastRows || []).filter(r => r.date !== todayStr()));
+      setVisits(visitRows || []);
       if (goalRows && goalRows.length > 0) {
         const ids = goalRows.map(g => g.id);
         const {
@@ -521,7 +586,7 @@ function Dashboard({
       height_in: form.height ? Number(form.height) : null,
       wake_time: form.wakeTime || "07:00",
       sleep_time: form.sleepTime || "21:00",
-      track_digestive: !!form.trackDigestive,
+      enabled_features: form.features || DEFAULT_FEATURES,
       user_id: authUser.id
     };
     const {
@@ -536,12 +601,71 @@ function Dashboard({
     }
     setSavingMember(false);
   };
-  const addGoal = async (name, target) => {
+  const updateMember = async form => {
+    setSavingMember(true);
+    setMemberError(null);
+    let photoUrl = activeMember.photo_url;
+    if (form.photoFile) {
+      const ext = form.photoFile.name.split(".").pop();
+      const path = `${uid("photo")}.${ext}`;
+      const {
+        error: upErr
+      } = await sb.storage.from("avatars").upload(path, form.photoFile);
+      if (!upErr) {
+        const {
+          data: pub
+        } = sb.storage.from("avatars").getPublicUrl(path);
+        photoUrl = pub.publicUrl;
+      }
+    }
+    const updates = {
+      name: form.name,
+      color: form.color,
+      photo_url: photoUrl,
+      age: form.age ? Number(form.age) : null,
+      weight_lbs: form.weight ? Number(form.weight) : null,
+      height_in: form.height ? Number(form.height) : null,
+      wake_time: form.wakeTime || "07:00",
+      sleep_time: form.sleepTime || "21:00",
+      enabled_features: form.features || DEFAULT_FEATURES
+    };
+    const {
+      error
+    } = await sb.from("members").update(updates).eq("id", activeMemberId);
+    if (!error) {
+      setMembers(prev => prev.map(m => m.id === activeMemberId ? {
+        ...m,
+        ...updates
+      } : m));
+      setShowEditProfile(false);
+    } else {
+      setMemberError(error.message || "Could not save changes. Please try again.");
+    }
+    setSavingMember(false);
+  };
+  const deleteMember = async () => {
+    setSavingMember(true);
+    const {
+      error
+    } = await sb.from("members").delete().eq("id", activeMemberId);
+    if (!error) {
+      const remaining = members.filter(m => m.id !== activeMemberId);
+      setMembers(remaining);
+      setActiveMemberId(remaining.length > 0 ? remaining[0].id : null);
+      setShowEditProfile(false);
+    } else {
+      setMemberError(error.message || "Could not delete this profile. Please try again.");
+    }
+    setSavingMember(false);
+  };
+  const addGoal = async (name, target, kind = "custom", dosage = null) => {
     const g = {
       id: uid("goal"),
       member_id: activeMemberId,
       name,
-      target_count: target
+      target_count: target,
+      kind,
+      dosage
     };
     const {
       error
@@ -549,7 +673,28 @@ function Dashboard({
     if (!error) {
       setGoals(prev => [...prev, g]);
       setShowAddGoal(false);
+      setShowAddMed(false);
     }
+  };
+  const addVisit = async form => {
+    const v = {
+      id: uid("visit"),
+      member_id: activeMemberId,
+      date: form.date || todayStr(),
+      doctor_name: form.doctorName,
+      notes: form.notes
+    };
+    const {
+      error
+    } = await sb.from("visits").insert(v);
+    if (!error) {
+      setVisits(prev => [v, ...prev]);
+      setShowAddVisit(false);
+    }
+  };
+  const deleteVisit = async id => {
+    await sb.from("visits").delete().eq("id", id);
+    setVisits(prev => prev.filter(v => v.id !== id));
   };
   const incrementGoal = async (goalId, target) => {
     const current = goalLogs[goalId] || 0;
@@ -592,6 +737,17 @@ function Dashboard({
     }));
     setShowTemp(false);
   };
+  const addWeight = value => {
+    setDay(prev => ({
+      ...prev,
+      weightLogs: [...prev.weightLogs, {
+        id: uid("weight"),
+        time: nowTime(),
+        value
+      }]
+    }));
+    setShowWeight(false);
+  };
   const addStool = (typeId, note) => {
     setDay(prev => ({
       ...prev,
@@ -632,6 +788,8 @@ function Dashboard({
     ...prev,
     urine: prev.urine.filter(u => u.id !== id)
   }));
+  const customGoals = goals.filter(g => g.kind !== "medication");
+  const medications = goals.filter(g => g.kind === "medication");
   const goalOz = activeMember ? waterGoalOz(activeMember.age, activeMember.weight_lbs) : 64;
   const hoursAwake = activeMember ? hoursBetween(activeMember.wake_time, activeMember.sleep_time) : 15;
   const hourlyOz = Math.round(goalOz / hoursAwake * 10) / 10;
@@ -861,7 +1019,10 @@ function Dashboard({
       }
     }, m.name.charAt(0).toUpperCase()), m.name);
   }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowAddMember(true),
+    onClick: () => {
+      setMemberError(null);
+      setShowAddMember(true);
+    },
     style: {
       padding: "6px 14px",
       borderRadius: 999,
@@ -871,18 +1032,34 @@ function Dashboard({
       fontWeight: 600,
       fontSize: 14
     }
-  }, "+ Add")), /*#__PURE__*/React.createElement("button", {
+  }, "+ Add")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 14,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowEditProfile(true),
+    style: {
+      background: "none",
+      border: "none",
+      color: "rgba(255,255,255,0.7)",
+      fontSize: 12,
+      padding: 0,
+      textDecoration: "underline"
+    }
+  }, "Edit profile"), /*#__PURE__*/React.createElement("button", {
     onClick: onLogout,
     style: {
       background: "none",
       border: "none",
       color: "rgba(255,255,255,0.7)",
       fontSize: 12,
-      marginTop: 12,
       padding: 0,
       textDecoration: "underline"
     }
-  }, "Log out"))), /*#__PURE__*/React.createElement("main", {
+  }, "Log out")))), /*#__PURE__*/React.createElement("main", {
     style: {
       maxWidth: 640,
       margin: "0 auto",
@@ -1072,7 +1249,7 @@ function Dashboard({
       fontSize: 13,
       fontWeight: 700
     }
-  }, "+ New goal")), goals.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "+ New goal")), customGoals.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 16,
@@ -1092,7 +1269,7 @@ function Dashboard({
       gridTemplateColumns: "1fr 1fr",
       gap: 10
     }
-  }, goals.map(g => {
+  }, customGoals.map(g => {
     const count = goalLogs[g.id] || 0;
     return /*#__PURE__*/React.createElement("div", {
       key: g.id,
@@ -1257,7 +1434,7 @@ function Dashboard({
       color: PALETTE.muted,
       fontSize: 16
     }
-  }, "✕"))))), activeMember?.track_digestive && /*#__PURE__*/React.createElement("section", {
+  }, "✕"))))), activeMember?.enabled_features?.digestive && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -1442,7 +1619,7 @@ function Dashboard({
       fontSize: 12,
       color: PALETTE.muted
     }
-  }, "Nothing logged yet today."))), /*#__PURE__*/React.createElement("section", {
+  }, "Nothing logged yet today."))), activeMember?.enabled_features?.meals !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -1583,7 +1760,7 @@ function Dashboard({
       ...day,
       skippedDinner: e.target.checked
     })
-  }), "🌙 No dinner today"))), /*#__PURE__*/React.createElement("section", {
+  }), "🌙 No dinner today"))), activeMember?.enabled_features?.remedies !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -1697,7 +1874,7 @@ function Dashboard({
       marginTop: 10,
       outline: "none"
     }
-  }))), /*#__PURE__*/React.createElement("section", {
+  }))), activeMember?.enabled_features?.workout !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -1754,7 +1931,352 @@ function Dashboard({
       padding: 8,
       fontSize: 14
     }
-  }))), /*#__PURE__*/React.createElement("section", {
+  }))), activeMember?.enabled_features?.medications && /*#__PURE__*/React.createElement("section", {
+    style: {
+      marginBottom: 28
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 18,
+      fontWeight: 600,
+      margin: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: PALETTE.coral
+    }
+  }, "💊"), " Medications & Vitamins"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowAddMed(true),
+    style: {
+      background: PALETTE.coral,
+      color: "#fff",
+      border: "none",
+      borderRadius: 999,
+      padding: "7px 16px",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "+ Add")), medications.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 16,
+      border: `1px dashed ${PALETTE.line}`,
+      padding: 20,
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: PALETTE.muted
+    }
+  }, "Add a medication or vitamin to track doses — e.g. \"Drops, 2x day.\"")) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 10
+    }
+  }, medications.map(m => {
+    const count = goalLogs[m.id] || 0;
+    return /*#__PURE__*/React.createElement("div", {
+      key: m.id,
+      style: {
+        background: PALETTE.paper,
+        borderRadius: 16,
+        border: `1px solid ${PALETTE.line}`,
+        padding: 14,
+        display: "flex",
+        alignItems: "center",
+        gap: 12
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => incrementGoal(m.id, m.target_count),
+      style: {
+        background: "none",
+        border: "none",
+        padding: 0
+      }
+    }, /*#__PURE__*/React.createElement(GoalRing, {
+      count: count,
+      target: m.target_count,
+      color: PALETTE.coral
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 13,
+        fontWeight: 700,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap"
+      }
+    }, m.name), m.dosage && /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 11,
+        color: PALETTE.muted
+      }
+    }, m.dosage), /*#__PURE__*/React.createElement("button", {
+      onClick: () => deleteGoal(m.id),
+      style: {
+        background: "none",
+        border: "none",
+        color: PALETTE.muted,
+        fontSize: 11,
+        padding: 0,
+        marginTop: 2
+      }
+    }, "Remove")));
+  }))), activeMember?.enabled_features?.sleep && /*#__PURE__*/React.createElement("section", {
+    style: {
+      marginBottom: 28
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 18,
+      fontWeight: 600,
+      marginBottom: 10,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "😴"), " Sleep"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 16,
+      border: `1px solid ${PALETTE.line}`,
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 12,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "Hours slept"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "0.5",
+    value: day.sleepHours,
+    onChange: e => setDay({
+      ...day,
+      sleepHours: e.target.value
+    }),
+    style: {
+      width: "100%",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 8,
+      padding: 8,
+      fontSize: 14
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "Times woken up"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "0",
+    value: day.sleepWakeups,
+    onChange: e => setDay({
+      ...day,
+      sleepWakeups: e.target.value
+    }),
+    style: {
+      width: "100%",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 8,
+      padding: 8,
+      fontSize: 14
+    }
+  }))), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "Quality"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 6
+    }
+  }, [1, 2, 3, 4, 5].map(q => /*#__PURE__*/React.createElement("button", {
+    key: q,
+    onClick: () => setDay({
+      ...day,
+      sleepQuality: q
+    }),
+    style: {
+      flex: 1,
+      padding: "10px 0",
+      borderRadius: 10,
+      border: `2px solid ${day.sleepQuality === q ? PALETTE.sageDeep : PALETTE.line}`,
+      background: day.sleepQuality === q ? PALETTE.sageDeep + "22" : "#fff",
+      fontSize: 18
+    }
+  }, ["😫", "😕", "😐", "🙂", "😌"][q - 1]))))), activeMember?.enabled_features?.weight && /*#__PURE__*/React.createElement("section", {
+    style: {
+      marginBottom: 28
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 18,
+      fontWeight: 600,
+      margin: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "⚖️"), " Weight"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowWeight(true),
+    style: {
+      background: PALETTE.sky,
+      color: "#fff",
+      border: "none",
+      borderRadius: 999,
+      padding: "7px 16px",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "+ Log")), day.weightLogs.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 16,
+      border: `1px solid ${PALETTE.line}`,
+      padding: 14,
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, day.weightLogs.slice().reverse().map(w => /*#__PURE__*/React.createElement("div", {
+    key: w.id,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: "8px 12px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 15,
+      fontWeight: 700
+    }
+  }, w.value, " lbs"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted,
+      flex: 1
+    }
+  }, fmtTime(w.time)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setDay(prev => ({
+      ...prev,
+      weightLogs: prev.weightLogs.filter(x => x.id !== w.id)
+    })),
+    style: {
+      background: "none",
+      border: "none",
+      color: PALETTE.muted,
+      fontSize: 16
+    }
+  }, "✕"))))), activeMember?.enabled_features?.cycle && /*#__PURE__*/React.createElement("section", {
+    style: {
+      marginBottom: 28
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 18,
+      fontWeight: 600,
+      marginBottom: 10,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "🩸"), " Menstrual Cycle"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 16,
+      border: `1px solid ${PALETTE.line}`,
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, "On period today"), /*#__PURE__*/React.createElement(Toggle, {
+    on: day.onPeriod,
+    onClick: () => setDay({
+      ...day,
+      onPeriod: !day.onPeriod
+    })
+  })), day.onPeriod && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 12
+    }
+  }, FLOW_LEVELS.map(f => /*#__PURE__*/React.createElement("button", {
+    key: f,
+    onClick: () => setDay({
+      ...day,
+      periodFlow: f
+    }),
+    style: {
+      flex: 1,
+      padding: "8px 0",
+      borderRadius: 10,
+      border: `2px solid ${day.periodFlow === f ? "#D4547A" : PALETTE.line}`,
+      background: day.periodFlow === f ? "#D4547A22" : "#fff",
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, f))))), /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 20
     }
@@ -1804,7 +2326,93 @@ function Dashboard({
     style: {
       color: PALETTE.coral
     }
-  }, "Couldn't save — check your connection")), pastEntries.length > 0 && /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", {
+  }, "Couldn't save — check your connection")), activeMember?.enabled_features?.visits && /*#__PURE__*/React.createElement("section", {
+    style: {
+      marginBottom: 28
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 18,
+      fontWeight: 600,
+      margin: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "🩺"), " Doctor Visits"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowAddVisit(true),
+    style: {
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      border: "none",
+      borderRadius: 999,
+      padding: "7px 16px",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "+ Add visit")), visits.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 16,
+      border: `1px dashed ${PALETTE.line}`,
+      padding: 20,
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: PALETTE.muted
+    }
+  }, "Keep notes from appointments here to look back on later.")) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, visits.map(v => /*#__PURE__*/React.createElement("div", {
+    key: v.id,
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 14,
+      border: `1px solid ${PALETTE.line}`,
+      padding: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, fmtDate(v.date), v.doctor_name ? ` — ${v.doctor_name}` : ""), /*#__PURE__*/React.createElement("button", {
+    onClick: () => deleteVisit(v.id),
+    style: {
+      background: "none",
+      border: "none",
+      color: PALETTE.muted,
+      fontSize: 15
+    }
+  }, "✕")), v.notes && /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "6px 0 0",
+      fontSize: 13,
+      color: PALETTE.muted
+    }
+  }, v.notes))))), pastEntries.length > 0 && /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 18,
@@ -1943,6 +2551,25 @@ function Dashboard({
   }), showAddGoal && /*#__PURE__*/React.createElement(GoalModal, {
     onClose: () => setShowAddGoal(false),
     onSave: addGoal
+  }), showAddMed && /*#__PURE__*/React.createElement(MedModal, {
+    onClose: () => setShowAddMed(false),
+    onSave: addGoal
+  }), showWeight && /*#__PURE__*/React.createElement(WeightModal, {
+    onClose: () => setShowWeight(false),
+    onSave: addWeight
+  }), showAddVisit && /*#__PURE__*/React.createElement(VisitModal, {
+    onClose: () => setShowAddVisit(false),
+    onSave: addVisit
+  }), showEditProfile && activeMember && /*#__PURE__*/React.createElement(EditProfileModal, {
+    member: activeMember,
+    onSave: updateMember,
+    onDelete: deleteMember,
+    onClose: () => {
+      setShowEditProfile(false);
+      setMemberError(null);
+    },
+    saving: savingMember,
+    error: memberError
   }));
 }
 function ModalShell({
@@ -2313,6 +2940,192 @@ function GoalModal({
     }
   }, "Add goal"));
 }
+function MedModal({
+  onClose,
+  onSave
+}) {
+  const [name, setName] = useState("");
+  const [dosage, setDosage] = useState("");
+  const [target, setTarget] = useState(2);
+  return /*#__PURE__*/React.createElement(ModalShell, {
+    onClose: onClose
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "display",
+    style: {
+      fontSize: 20,
+      marginTop: 0
+    }
+  }, "New medication or vitamin"), /*#__PURE__*/React.createElement("input", {
+    value: name,
+    onChange: e => setName(e.target.value),
+    placeholder: "e.g. Drops, Vitamin D",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "14px 0 10px"
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    value: dosage,
+    onChange: e => setDosage(e.target.value),
+    placeholder: "Dosage (optional) — e.g. 10mg",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      marginBottom: 10
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 13,
+      color: PALETTE.muted
+    }
+  }, "How many times a day?"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "1",
+    value: target,
+    onChange: e => setTarget(Number(e.target.value)),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "6px 0 20px"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => name.trim() && onSave(name.trim(), target, "medication", dosage.trim() || null),
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.coral,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15
+    }
+  }, "Add"));
+}
+function WeightModal({
+  onClose,
+  onSave
+}) {
+  const [value, setValue] = useState("");
+  return /*#__PURE__*/React.createElement(ModalShell, {
+    onClose: onClose
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "display",
+    style: {
+      fontSize: 20,
+      marginTop: 0
+    }
+  }, "Log weight"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    step: "0.1",
+    value: value,
+    onChange: e => setValue(e.target.value),
+    placeholder: "lbs",
+    style: {
+      width: "100%",
+      fontSize: 32,
+      textAlign: "center",
+      padding: 16,
+      borderRadius: 14,
+      border: `1px solid ${PALETTE.line}`,
+      margin: "16px 0"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => value && onSave(value),
+    disabled: !value,
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.sky,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15
+    }
+  }, "Save"));
+}
+function VisitModal({
+  onClose,
+  onSave
+}) {
+  const [date, setDate] = useState(todayStr());
+  const [doctorName, setDoctorName] = useState("");
+  const [notes, setNotes] = useState("");
+  return /*#__PURE__*/React.createElement(ModalShell, {
+    onClose: onClose
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "display",
+    style: {
+      fontSize: 20,
+      marginTop: 0
+    }
+  }, "Log a doctor visit"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: date,
+    onChange: e => setDate(e.target.value),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "14px 0 10px"
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    value: doctorName,
+    onChange: e => setDoctorName(e.target.value),
+    placeholder: "Doctor / clinic (optional)",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      marginBottom: 10
+    }
+  }), /*#__PURE__*/React.createElement("textarea", {
+    value: notes,
+    onChange: e => setNotes(e.target.value),
+    placeholder: "What did they say? Any next steps?",
+    rows: 4,
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 14,
+      marginBottom: 16,
+      fontFamily: "inherit",
+      resize: "none"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSave({
+      date,
+      doctorName: doctorName.trim() || null,
+      notes: notes.trim() || null
+    }),
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15
+    }
+  }, "Save visit"));
+}
 function MemberOnboarding({
   onSave,
   saving,
@@ -2329,8 +3142,10 @@ function MemberOnboarding({
   const [color, setColor] = useState(MEMBER_COLORS[0]);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [trackDigestive, setTrackDigestive] = useState(false);
-  const steps = ["name", "age-weight-height", "schedule", "photo-color"];
+  const [features, setFeatures] = useState({
+    ...DEFAULT_FEATURES
+  });
+  const steps = ["name", "age-weight-height", "schedule", "photo-color", "features"];
   const canNext = step === 0 ? name.trim().length > 0 : true;
   const handlePhoto = e => {
     const f = e.target.files[0];
@@ -2574,15 +3389,35 @@ function MemberOnboarding({
       background: c,
       border: color === c ? `3px solid ${PALETTE.ink}` : "none"
     }
-  })))), /*#__PURE__*/React.createElement("div", {
+  }))))), step === 4 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 22,
+      marginTop: 0
+    }
+  }, "What should this profile track?"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: PALETTE.muted,
+      marginBottom: 14
+    }
+  }, "Turn on whatever's useful — change these anytime later."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+      maxHeight: 320,
+      overflowY: "auto"
+    }
+  }, FEATURE_LIST.map(f => /*#__PURE__*/React.createElement("div", {
+    key: f.key,
     style: {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       background: PALETTE.cream,
       borderRadius: 12,
-      padding: 12,
-      marginTop: 4
+      padding: 12
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2594,16 +3429,19 @@ function MemberOnboarding({
       fontSize: 13,
       fontWeight: 600
     }
-  }, "Track bowel & urine health"), /*#__PURE__*/React.createElement("p", {
+  }, f.label), /*#__PURE__*/React.createElement("p", {
     style: {
       margin: "2px 0 0",
       fontSize: 11,
       color: PALETTE.muted
     }
-  }, "Optional — can be turned on or off anytime later.")), /*#__PURE__*/React.createElement(Toggle, {
-    on: trackDigestive,
-    onClick: () => setTrackDigestive(!trackDigestive)
-  }))), error && /*#__PURE__*/React.createElement("div", {
+  }, f.detail)), /*#__PURE__*/React.createElement(Toggle, {
+    on: !!features[f.key],
+    onClick: () => setFeatures(prev => ({
+      ...prev,
+      [f.key]: !prev[f.key]
+    }))
+  }))))), error && step === 4 && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#FDF0F0",
       border: "1px solid #E8B8B8",
@@ -2644,7 +3482,7 @@ function MemberOnboarding({
       background: "#fff",
       fontWeight: 600
     }
-  }, "Cancel"), step < 3 ? /*#__PURE__*/React.createElement("button", {
+  }, "Cancel"), step < 4 ? /*#__PURE__*/React.createElement("button", {
     onClick: () => canNext && setStep(step + 1),
     disabled: !canNext,
     style: {
@@ -2668,7 +3506,7 @@ function MemberOnboarding({
       sleepTime,
       color,
       photoFile,
-      trackDigestive
+      features
     }),
     style: {
       flex: 2,
@@ -2680,6 +3518,395 @@ function MemberOnboarding({
       fontWeight: 700
     }
   }, saving ? "Saving..." : "Create profile"))));
+}
+function EditProfileModal({
+  member,
+  onSave,
+  onDelete,
+  onClose,
+  saving,
+  error
+}) {
+  const [name, setName] = useState(member.name || "");
+  const [age, setAge] = useState(member.age || "");
+  const [weight, setWeight] = useState(member.weight_lbs || "");
+  const [height, setHeight] = useState(member.height_in || "");
+  const [wakeTime, setWakeTime] = useState(member.wake_time || "07:00");
+  const [sleepTime, setSleepTime] = useState(member.sleep_time || "21:00");
+  const [color, setColor] = useState(member.color || MEMBER_COLORS[0]);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(member.photo_url || null);
+  const [features, setFeatures] = useState({
+    ...DEFAULT_FEATURES,
+    ...(member.enabled_features || {})
+  });
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const handlePhoto = e => {
+    const f = e.target.files[0];
+    if (f) {
+      setPhotoFile(f);
+      setPhotoPreview(URL.createObjectURL(f));
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(20,30,25,0.55)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20,
+      zIndex: 60
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: "#fff",
+      borderRadius: 24,
+      padding: 28,
+      maxWidth: 420,
+      width: "100%",
+      maxHeight: "88vh",
+      overflowY: "auto"
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 22,
+      marginTop: 0
+    }
+  }, "Edit profile"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 16,
+      margin: "14px 0"
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      width: 64,
+      height: 64,
+      borderRadius: "50%",
+      background: photoPreview ? "transparent" : color,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 22,
+      cursor: "pointer",
+      overflow: "hidden",
+      border: `2px dashed ${PALETTE.line}`
+    }
+  }, photoPreview ? /*#__PURE__*/React.createElement("img", {
+    src: photoPreview,
+    style: {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover"
+    }
+  }) : name.charAt(0).toUpperCase() || "?", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: "image/*",
+    onChange: handlePhoto,
+    style: {
+      display: "none"
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 8
+    }
+  }, MEMBER_COLORS.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c,
+    onClick: () => setColor(c),
+    style: {
+      width: 28,
+      height: 28,
+      borderRadius: "50%",
+      background: c,
+      border: color === c ? `3px solid ${PALETTE.ink}` : "none"
+    }
+  })))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Name"), /*#__PURE__*/React.createElement("input", {
+    value: name,
+    onChange: e => setName(e.target.value),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "4px 0 12px"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Age"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: age,
+    onChange: e => setAge(e.target.value),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "4px 0 12px"
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Weight (lbs)"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: weight,
+    onChange: e => setWeight(e.target.value),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "4px 0 12px"
+    }
+  }))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Height (inches)"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: height,
+    onChange: e => setHeight(e.target.value),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "4px 0 12px"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Wake-up"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: wakeTime,
+    onChange: e => setWakeTime(e.target.value),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "4px 0 16px"
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Bedtime"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: sleepTime,
+    onChange: e => setSleepTime(e.target.value),
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "4px 0 16px"
+    }
+  }))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      margin: "8px 0"
+    }
+  }, "What should this profile track?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, FEATURE_LIST.map(f => /*#__PURE__*/React.createElement("div", {
+    key: f.key,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      paddingRight: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, f.label)), /*#__PURE__*/React.createElement(Toggle, {
+    on: !!features[f.key],
+    onClick: () => setFeatures(prev => ({
+      ...prev,
+      [f.key]: !prev[f.key]
+    }))
+  })))), error && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#FDF0F0",
+      border: "1px solid #E8B8B8",
+      borderRadius: 12,
+      padding: "10px 12px",
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      color: "#B0507E",
+      fontWeight: 600
+    }
+  }, error)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginTop: 20
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      flex: 1,
+      padding: 13,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      background: "#fff",
+      fontWeight: 600
+    }
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    disabled: saving,
+    onClick: () => onSave({
+      name,
+      age,
+      weight,
+      height,
+      wakeTime,
+      sleepTime,
+      color,
+      photoFile,
+      features
+    }),
+    style: {
+      flex: 2,
+      padding: 13,
+      borderRadius: 12,
+      border: "none",
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      fontWeight: 700
+    }
+  }, saving ? "Saving..." : "Save changes")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 20,
+      paddingTop: 16,
+      borderTop: `1px solid ${PALETTE.line}`
+    }
+  }, !confirmingDelete ? /*#__PURE__*/React.createElement("button", {
+    onClick: () => setConfirmingDelete(true),
+    style: {
+      width: "100%",
+      background: "none",
+      border: "none",
+      color: "#B0507E",
+      fontSize: 13,
+      fontWeight: 600,
+      padding: 8
+    }
+  }, "Delete this profile") : /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#FDF0F0",
+      borderRadius: 12,
+      padding: 14
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 10px",
+      fontSize: 13,
+      color: "#B0507E"
+    }
+  }, "This removes ", name, "'s profile and everything tracked for them. This can't be undone."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setConfirmingDelete(false),
+    style: {
+      flex: 1,
+      padding: 10,
+      borderRadius: 10,
+      border: `1px solid ${PALETTE.line}`,
+      background: "#fff",
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    disabled: saving,
+    onClick: onDelete,
+    style: {
+      flex: 1,
+      padding: 10,
+      borderRadius: 10,
+      border: "none",
+      background: "#B0507E",
+      color: "#fff",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, saving ? "Deleting..." : "Yes, delete"))))));
 }
 function AuthScreen({
   onAuthed
