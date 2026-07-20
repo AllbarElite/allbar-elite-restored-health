@@ -166,17 +166,11 @@ function emptyDayData() {
     urine: [],
     weightLogs: [],
     morning: "",
-    morningBevType: "",
-    morningBevAmount: "",
-    morningBevUnit: "oz",
+    morningDrinks: [],
     afternoon: "",
-    afternoonBevType: "",
-    afternoonBevAmount: "",
-    afternoonBevUnit: "oz",
+    afternoonDrinks: [],
     snack: "",
-    snackBevType: "",
-    snackBevAmount: "",
-    snackBevUnit: "oz",
+    snackDrinks: [],
     skippedDinner: true,
     massageStart: "",
     massageEnd: "",
@@ -187,8 +181,13 @@ function emptyDayData() {
     sleepHours: "",
     sleepQuality: null,
     sleepWakeups: "",
-    onPeriod: false,
+    periodStatus: "",
     periodFlow: "",
+    cycleSymptoms: [],
+    hotFlashes: "",
+    nightSweats: false,
+    cycleNote: "",
+    ovulationTest: "",
     journal: ""
   };
 }
@@ -196,39 +195,59 @@ const BRISTOL_TYPES = [{
   id: 1,
   label: "Hard lumps",
   detail: "Separate, hard to pass",
-  color: "#8B5E3C"
+  color: "#8B5E3C",
+  meaning: "Signs of constipation",
+  group: "Constipated"
 }, {
   id: 2,
   label: "Lumpy",
   detail: "Sausage-shaped, lumpy",
-  color: "#9B6B47"
+  color: "#9B6B47",
+  meaning: "Signs of constipation",
+  group: "Constipated"
 }, {
   id: 3,
   label: "Cracked",
   detail: "Sausage with surface cracks",
-  color: "#A9784F"
+  color: "#A9784F",
+  meaning: "Normal",
+  group: "Normal"
 }, {
   id: 4,
   label: "Smooth",
   detail: "Smooth, soft — easy to pass",
-  color: "#8C9A5B"
+  color: "#8C9A5B",
+  meaning: "Normal — this is the ideal type",
+  group: "Normal"
 }, {
   id: 5,
   label: "Soft blobs",
   detail: "Soft blobs, clear edges",
-  color: "#C9A64A"
+  color: "#C9A64A",
+  meaning: "Lacking fiber, on the loose side",
+  group: "Leaning toward diarrhea"
 }, {
   id: 6,
   label: "Mushy",
   detail: "Fluffy, ragged edges",
-  color: "#D8B15C"
+  color: "#D8B15C",
+  meaning: "Leaning toward diarrhea",
+  group: "Leaning toward diarrhea"
 }, {
   id: 7,
   label: "Watery",
   detail: "Entirely liquid",
-  color: "#E8C87A"
+  color: "#E8C87A",
+  meaning: "Diarrhea",
+  group: "Leaning toward diarrhea"
 }];
+const BRISTOL_GROUP_COLORS = {
+  "Constipated": "#C97D60",
+  "Normal": "#0E8C74",
+  "Leaning toward diarrhea": "#D4547A"
+};
 const URINE_SHADES = ["#F5F3E7", "#F2EBC3", "#EEE29B", "#E8D274", "#DEBD4F", "#CFA23A", "#B8812B", "#8F5A1E"];
+const URINE_MEANINGS = ["Pale/clear — well hydrated", "Very light — well hydrated", "Pale yellow — good hydration", "Yellow — normal", "Deeper yellow — could drink a bit more", "Amber — a sign you're dehydrated", "Dark amber/orange — drink water soon", "Dark/tea-colored — worth mentioning to a doctor if it stays this way"];
 const DEFAULT_FEATURES = {
   meals: true,
   remedies: true,
@@ -278,6 +297,90 @@ const FEATURE_LIST = [{
   detail: "Notes from appointments over time"
 }];
 const FLOW_LEVELS = ["Light", "Medium", "Heavy"];
+const CYCLE_SYMPTOM_TAGS = [{
+  key: "cramps",
+  label: "Cramps",
+  emoji: "😧"
+}, {
+  key: "bloating",
+  label: "Bloating",
+  emoji: "🍞"
+}, {
+  key: "tenderness",
+  label: "Breast tenderness",
+  emoji: "🩹"
+}, {
+  key: "headache",
+  label: "Headache",
+  emoji: "🤕"
+}, {
+  key: "backPain",
+  label: "Back pain",
+  emoji: "🦴"
+}, {
+  key: "moodSwings",
+  label: "Mood swings",
+  emoji: "🌀"
+}];
+function computeCycleInfo(pastEntries, todayEntry, todayDate) {
+  const allDays = [...pastEntries.map(r => ({
+    date: r.date,
+    status: r.data?.periodStatus
+  })), {
+    date: todayDate,
+    status: todayEntry?.periodStatus
+  }].filter(d => d.date).sort((a, b) => a.date < b.date ? -1 : 1);
+  const starts = [];
+  for (let i = 0; i < allDays.length; i++) {
+    if (allDays[i].status === "period" && (i === 0 || allDays[i - 1].status !== "period")) {
+      starts.push(allDays[i].date);
+    }
+  }
+  if (starts.length === 0) {
+    return {
+      hasData: false
+    };
+  }
+  const lastStart = starts[starts.length - 1];
+  let avgLength = null;
+  if (starts.length >= 2) {
+    const gaps = [];
+    for (let i = 1; i < starts.length; i++) {
+      const d1 = new Date(starts[i - 1] + "T00:00:00");
+      const d2 = new Date(starts[i] + "T00:00:00");
+      gaps.push(Math.round((d2 - d1) / 86400000));
+    }
+    avgLength = Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length);
+  }
+  const lastStartDate = new Date(lastStart + "T00:00:00");
+  const todayD = new Date(todayDate + "T00:00:00");
+  const cycleDay = Math.round((todayD - lastStartDate) / 86400000) + 1;
+  let nextPeriod = null,
+    ovulationDay = null,
+    fertileStart = null,
+    fertileEnd = null;
+  if (avgLength) {
+    nextPeriod = new Date(lastStartDate);
+    nextPeriod.setDate(nextPeriod.getDate() + avgLength);
+    ovulationDay = new Date(nextPeriod);
+    ovulationDay.setDate(ovulationDay.getDate() - 14);
+    fertileStart = new Date(ovulationDay);
+    fertileStart.setDate(fertileStart.getDate() - 5);
+    fertileEnd = new Date(ovulationDay);
+    fertileEnd.setDate(fertileEnd.getDate() + 1);
+  }
+  return {
+    hasData: true,
+    cycleDay,
+    avgLength,
+    lastStart,
+    nextPeriod: nextPeriod ? nextPeriod.toISOString().slice(0, 10) : null,
+    ovulationDay: ovulationDay ? ovulationDay.toISOString().slice(0, 10) : null,
+    fertileStart: fertileStart ? fertileStart.toISOString().slice(0, 10) : null,
+    fertileEnd: fertileEnd ? fertileEnd.toISOString().slice(0, 10) : null,
+    cyclesLogged: starts.length
+  };
+}
 function wellbeingEmoji(n) {
   if (n <= 2) return "🥱";
   if (n <= 4) return "😕";
@@ -287,15 +390,16 @@ function wellbeingEmoji(n) {
 }
 function beverageOzFromDay(d) {
   let total = 0;
-  ["morning", "afternoon", "snack"].forEach(m => {
-    const type = d[`${m}BevType`];
-    const amt = Number(d[`${m}BevAmount`]) || 0;
-    const unit = d[`${m}BevUnit`] || "oz";
-    if (!type || !amt) return;
-    let oz = amt;
-    if (unit === "ml") oz = amt / 29.57;
-    if (unit === "cup") oz = amt * 8;
-    total += oz;
+  ["morningDrinks", "afternoonDrinks", "snackDrinks"].forEach(key => {
+    (d[key] || []).forEach(drink => {
+      const amt = Number(drink.amount) || 0;
+      const unit = drink.unit || "oz";
+      if (!drink.type || !amt) return;
+      let oz = amt;
+      if (unit === "ml") oz = amt / 29.57;
+      if (unit === "cup") oz = amt * 8;
+      total += oz;
+    });
   });
   return Math.round(total * 10) / 10;
 }
@@ -424,6 +528,370 @@ function GoalRing({
     fill: PALETTE.ink,
     fontFamily: "Inter"
   }, done ? "✓" : `${count}/${target}`));
+}
+function BristolIcon({
+  typeId,
+  size = 40,
+  color
+}) {
+  const c = color || "#8B5E3C";
+  const shapes = {
+    1: /*#__PURE__*/React.createElement("g", {
+      fill: c
+    }, /*#__PURE__*/React.createElement("circle", {
+      cx: "12",
+      cy: "16",
+      r: "4.5"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: "22",
+      cy: "12",
+      r: "4"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: "30",
+      cy: "18",
+      r: "4.8"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: "16",
+      cy: "26",
+      r: "4.2"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: "27",
+      cy: "27",
+      r: "3.8"
+    })),
+    2: /*#__PURE__*/React.createElement("path", {
+      fill: c,
+      d: "M6 20c0-5 4-8 9-8 3 0 4 2 6 2s3-2 6-1c4 1 7 4 7 8s-3 6-7 6c-3 0-4-2-6-2s-4 3-8 2c-4-1-7-3-7-7z"
+    }),
+    3: /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
+      x: "5",
+      y: "15",
+      width: "30",
+      height: "10",
+      rx: "5",
+      fill: c
+    }), /*#__PURE__*/React.createElement("path", {
+      d: "M13 15v10M20 15v10M27 15v10",
+      stroke: "#FDF9F0",
+      strokeWidth: "1.2",
+      opacity: "0.6"
+    })),
+    4: /*#__PURE__*/React.createElement("path", {
+      fill: c,
+      d: "M4 22c0-6 4-9 9-8 5 1 6 4 10 4s7-4 11-2c2 1 2 4 0 5-3 2-8-1-11 1-4 2-6 6-11 5-5-1-8-2-8-5z"
+    }),
+    5: /*#__PURE__*/React.createElement("g", {
+      fill: c
+    }, /*#__PURE__*/React.createElement("ellipse", {
+      cx: "11",
+      cy: "18",
+      rx: "6",
+      ry: "4.5"
+    }), /*#__PURE__*/React.createElement("ellipse", {
+      cx: "23",
+      cy: "15",
+      rx: "5.5",
+      ry: "4.2"
+    }), /*#__PURE__*/React.createElement("ellipse", {
+      cx: "31",
+      cy: "21",
+      rx: "5",
+      ry: "4"
+    }), /*#__PURE__*/React.createElement("ellipse", {
+      cx: "18",
+      cy: "25",
+      rx: "5.5",
+      ry: "4"
+    })),
+    6: /*#__PURE__*/React.createElement("path", {
+      fill: c,
+      d: "M6 22c-1-3 2-5 4-4 1-3 5-4 7-2 2-3 6-3 8-1 3-2 7 0 7 3 2 0 3 3 1 5-2 3-6 2-9 3-4 1-8 2-11 0-3-1-6-1-7-4z"
+    }),
+    7: /*#__PURE__*/React.createElement("path", {
+      fill: c,
+      d: "M4 24c2-3 6-2 8-3 3-2 7-1 9 1 3-2 8-2 10 1 2-2 5-1 5 1 0 3-4 4-7 4-3 1-6 0-9 1-4 1-9 1-12-1-2-1-5-2-4-4z",
+      opacity: "0.85"
+    })
+  };
+  return /*#__PURE__*/React.createElement("svg", {
+    width: size,
+    height: size,
+    viewBox: "0 0 36 36",
+    style: {
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("circle", {
+    cx: "18",
+    cy: "18",
+    r: "17",
+    fill: c + "15"
+  }), shapes[typeId]);
+}
+function MealDrinkRow({
+  mealKey,
+  label,
+  day,
+  setDay
+}) {
+  const [type, setType] = useState("");
+  const [amount, setAmount] = useState("");
+  const [unit, setUnit] = useState("oz");
+  const drinksKey = `${mealKey}Drinks`;
+  const drinks = day[drinksKey] || [];
+  const addDrink = () => {
+    if (!type || !amount) return;
+    setDay({
+      ...day,
+      [drinksKey]: [...drinks, {
+        id: uid("drink"),
+        type,
+        amount,
+        unit
+      }]
+    });
+    setType("");
+    setAmount("");
+  };
+  const removeDrink = id => {
+    setDay({
+      ...day,
+      [drinksKey]: drinks.filter(d => d.id !== id)
+    });
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    placeholder: label,
+    value: day[mealKey],
+    onChange: e => setDay({
+      ...day,
+      [mealKey]: e.target.value
+    }),
+    style: {
+      width: "100%",
+      border: "none",
+      borderBottom: `1px solid ${PALETTE.line}`,
+      background: "transparent",
+      padding: "6px 0",
+      fontSize: 15,
+      marginBottom: 8,
+      outline: "none"
+    }
+  }), drinks.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 6,
+      marginBottom: 8
+    }
+  }, drinks.map(d => /*#__PURE__*/React.createElement("div", {
+    key: d.id,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      background: "#fff",
+      borderRadius: 8,
+      padding: "6px 10px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      flex: 1
+    }
+  }, d.type, " — ", d.amount, d.unit), /*#__PURE__*/React.createElement("button", {
+    onClick: () => removeDrink(d.id),
+    style: {
+      background: "none",
+      border: "none",
+      color: PALETTE.muted,
+      fontSize: 14
+    }
+  }, "✕")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: PALETTE.sky
+    }
+  }, "☕"), /*#__PURE__*/React.createElement("select", {
+    value: type,
+    onChange: e => setType(e.target.value),
+    style: {
+      borderRadius: 8,
+      border: `1px solid ${PALETTE.line}`,
+      padding: "6px 8px",
+      fontSize: 13,
+      background: "#fff"
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Add a drink"), BEVERAGE_OPTIONS.map(o => /*#__PURE__*/React.createElement("option", {
+    key: o,
+    value: o
+  }, o))), type && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "0",
+    value: amount,
+    onChange: e => setAmount(e.target.value),
+    placeholder: "Amt",
+    style: {
+      width: 60,
+      borderRadius: 8,
+      border: `1px solid ${PALETTE.line}`,
+      padding: "6px 8px",
+      fontSize: 13
+    }
+  }), /*#__PURE__*/React.createElement("select", {
+    value: unit,
+    onChange: e => setUnit(e.target.value),
+    style: {
+      borderRadius: 8,
+      border: `1px solid ${PALETTE.line}`,
+      padding: "6px 8px",
+      fontSize: 13,
+      background: "#fff"
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "oz"
+  }, "oz"), /*#__PURE__*/React.createElement("option", {
+    value: "ml"
+  }, "ml"), /*#__PURE__*/React.createElement("option", {
+    value: "cup"
+  }, "cup")), /*#__PURE__*/React.createElement("button", {
+    onClick: addDrink,
+    style: {
+      borderRadius: 8,
+      border: "none",
+      background: PALETTE.sky,
+      color: "#fff",
+      padding: "6px 12px",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "Add"))));
+}
+function CycleCalendar({
+  pastEntries,
+  todayEntry,
+  todayDate,
+  cycleInfo
+}) {
+  const today = new Date(todayDate + "T00:00:00");
+  const year = today.getFullYear(),
+    month = today.getMonth();
+  const startWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const periodDates = new Set(pastEntries.filter(r => r.data?.periodStatus === "period").map(r => r.date));
+  if (todayEntry?.periodStatus === "period") periodDates.add(todayDate);
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(`${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  function cellStyle(dateStr) {
+    if (!dateStr) return {};
+    const isToday = dateStr === todayDate;
+    const isPeriod = periodDates.has(dateStr);
+    const isOvulation = cycleInfo.ovulationDay === dateStr;
+    const isFertile = cycleInfo.fertileStart && dateStr >= cycleInfo.fertileStart && dateStr <= cycleInfo.fertileEnd;
+    let bg = "transparent",
+      color = PALETTE.ink;
+    if (isPeriod) {
+      bg = "#D4547A";
+      color = "#fff";
+    } else if (isOvulation) {
+      bg = PALETTE.gold;
+      color = PALETTE.ink;
+    } else if (isFertile) {
+      bg = "#D4547A22";
+    }
+    return {
+      background: bg,
+      color,
+      border: isToday ? `2px solid ${PALETTE.ink}` : "none",
+      fontWeight: isToday ? 800 : 500
+    };
+  }
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      textAlign: "center",
+      fontWeight: 700,
+      fontSize: 13,
+      marginBottom: 8
+    }
+  }, today.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(7,1fr)",
+      gap: 4,
+      fontSize: 11
+    }
+  }, ["S", "M", "T", "W", "T", "F", "S"].map((d, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      textAlign: "center",
+      color: PALETTE.muted,
+      fontWeight: 700
+    }
+  }, d)), cells.map((dateStr, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      aspectRatio: "1",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 8,
+      fontSize: 11,
+      ...cellStyle(dateStr)
+    }
+  }, dateStr ? Number(dateStr.slice(-2)) : ""))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 12,
+      marginTop: 10,
+      fontSize: 10,
+      color: PALETTE.muted,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: "#D4547A",
+      marginRight: 4
+    }
+  }), "Period"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: "#D4547A22",
+      marginRight: 4
+    }
+  }), "Fertile window"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: PALETTE.gold,
+      marginRight: 4
+    }
+  }), "Est. ovulation")));
 }
 function Dashboard({
   authUser,
@@ -760,14 +1228,15 @@ function Dashboard({
     }));
     setShowStool(false);
   };
-  const addUrine = (shadeIndex, note) => {
+  const addUrine = (shadeIndex, note, bubbles) => {
     setDay(prev => ({
       ...prev,
       urine: [...prev.urine, {
         id: uid("urine"),
         time: nowTime(),
         shadeIndex,
-        note
+        note,
+        bubbles
       }]
     }));
     setShowUrine(false);
@@ -1498,14 +1967,10 @@ function Dashboard({
         borderRadius: 12,
         padding: "8px 12px"
       }
-    }, /*#__PURE__*/React.createElement("span", {
-      style: {
-        width: 22,
-        height: 22,
-        borderRadius: "50%",
-        background: t?.color,
-        flexShrink: 0
-      }
+    }, /*#__PURE__*/React.createElement(BristolIcon, {
+      typeId: s.typeId,
+      color: t?.color,
+      size: 28
     }), /*#__PURE__*/React.createElement("div", {
       style: {
         flex: 1
@@ -1521,7 +1986,14 @@ function Dashboard({
         color: PALETTE.muted,
         marginLeft: 6
       }
-    }, fmtTime(s.time)), s.note && /*#__PURE__*/React.createElement("p", {
+    }, fmtTime(s.time)), /*#__PURE__*/React.createElement("span", {
+      style: {
+        display: "block",
+        fontSize: 11,
+        fontWeight: 600,
+        color: BRISTOL_GROUP_COLORS[t?.group]
+      }
+    }, t?.meaning), s.note && /*#__PURE__*/React.createElement("p", {
       style: {
         margin: "2px 0 0",
         fontSize: 11,
@@ -1570,7 +2042,8 @@ function Dashboard({
     style: {
       display: "flex",
       flexDirection: "column",
-      gap: 8
+      gap: 8,
+      marginBottom: 14
     }
   }, day.urine.slice().reverse().map(u => /*#__PURE__*/React.createElement("div", {
     key: u.id,
@@ -1600,7 +2073,19 @@ function Dashboard({
       fontSize: 13,
       fontWeight: 600
     }
-  }, fmtTime(u.time)), u.note && /*#__PURE__*/React.createElement("p", {
+  }, fmtTime(u.time)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted,
+      marginLeft: 6
+    }
+  }, URINE_MEANINGS[u.shadeIndex]), u.bubbles && /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "block",
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "Noticed bubbles/foam"), u.note && /*#__PURE__*/React.createElement("p", {
     style: {
       margin: "2px 0 0",
       fontSize: 11,
@@ -1617,9 +2102,51 @@ function Dashboard({
   }, "✕")))) : /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
+      color: PALETTE.muted,
+      marginBottom: 14
+    }
+  }, "Nothing logged yet today."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.sageDeep,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, "What does urine color mean?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      display: "flex",
+      flexDirection: "column",
+      gap: 6
+    }
+  }, URINE_SHADES.map((c, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      background: c,
+      border: `1px solid ${PALETTE.line}`,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
       color: PALETTE.muted
     }
-  }, "Nothing logged yet today."))), activeMember?.enabled_features?.meals !== false && /*#__PURE__*/React.createElement("section", {
+  }, URINE_MEANINGS[i]))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted,
+      marginTop: 6
+    }
+  }, "A little foam from a fast stream is normal. Foam that's frequent and doesn't go away is worth mentioning to a doctor."))))), activeMember?.enabled_features?.meals !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -1656,97 +2183,13 @@ function Dashboard({
   }, {
     key: "snack",
     label: "Snack"
-  }].map(m => /*#__PURE__*/React.createElement("div", {
+  }].map(m => /*#__PURE__*/React.createElement(MealDrinkRow, {
     key: m.key,
-    style: {
-      background: PALETTE.cream,
-      borderRadius: 12,
-      padding: 12
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    className: "w-field",
-    placeholder: m.label,
-    value: day[m.key],
-    onChange: e => setDay({
-      ...day,
-      [m.key]: e.target.value
-    }),
-    style: {
-      width: "100%",
-      border: "none",
-      borderBottom: `1px solid ${PALETTE.line}`,
-      background: "transparent",
-      padding: "6px 0",
-      fontSize: 15,
-      marginBottom: 8,
-      outline: "none"
-    }
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      alignItems: "center",
-      flexWrap: "wrap"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 13,
-      color: PALETTE.sky
-    }
-  }, "☕"), /*#__PURE__*/React.createElement("select", {
-    value: day[`${m.key}BevType`],
-    onChange: e => setDay({
-      ...day,
-      [`${m.key}BevType`]: e.target.value
-    }),
-    style: {
-      borderRadius: 8,
-      border: `1px solid ${PALETTE.line}`,
-      padding: "6px 8px",
-      fontSize: 13,
-      background: "#fff"
-    }
-  }, /*#__PURE__*/React.createElement("option", {
-    value: ""
-  }, "No drink"), BEVERAGE_OPTIONS.map(o => /*#__PURE__*/React.createElement("option", {
-    key: o,
-    value: o
-  }, o))), day[`${m.key}BevType`] && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    min: "0",
-    value: day[`${m.key}BevAmount`],
-    onChange: e => setDay({
-      ...day,
-      [`${m.key}BevAmount`]: e.target.value
-    }),
-    placeholder: "Amt",
-    style: {
-      width: 60,
-      borderRadius: 8,
-      border: `1px solid ${PALETTE.line}`,
-      padding: "6px 8px",
-      fontSize: 13
-    }
-  }), /*#__PURE__*/React.createElement("select", {
-    value: day[`${m.key}BevUnit`],
-    onChange: e => setDay({
-      ...day,
-      [`${m.key}BevUnit`]: e.target.value
-    }),
-    style: {
-      borderRadius: 8,
-      border: `1px solid ${PALETTE.line}`,
-      padding: "6px 8px",
-      fontSize: 13,
-      background: "#fff"
-    }
-  }, /*#__PURE__*/React.createElement("option", {
-    value: "oz"
-  }, "oz"), /*#__PURE__*/React.createElement("option", {
-    value: "ml"
-  }, "ml"), /*#__PURE__*/React.createElement("option", {
-    value: "cup"
-  }, "cup")))))), /*#__PURE__*/React.createElement("label", {
+    mealKey: m.key,
+    label: m.label,
+    day: day,
+    setDay: setDay
+  })), /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -2217,66 +2660,266 @@ function Dashboard({
       color: PALETTE.muted,
       fontSize: 16
     }
-  }, "✕"))))), activeMember?.enabled_features?.cycle && /*#__PURE__*/React.createElement("section", {
-    style: {
-      marginBottom: 28
-    }
-  }, /*#__PURE__*/React.createElement("h2", {
-    className: "display",
-    style: {
-      fontSize: 18,
-      fontWeight: 600,
-      marginBottom: 10,
-      display: "flex",
-      alignItems: "center",
-      gap: 8
-    }
-  }, /*#__PURE__*/React.createElement("span", null, "🩸"), " Menstrual Cycle"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: PALETTE.paper,
-      borderRadius: 16,
-      border: `1px solid ${PALETTE.line}`,
-      padding: 16
-    }
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 13,
-      fontWeight: 600
-    }
-  }, "On period today"), /*#__PURE__*/React.createElement(Toggle, {
-    on: day.onPeriod,
-    onClick: () => setDay({
-      ...day,
-      onPeriod: !day.onPeriod
-    })
-  })), day.onPeriod && /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      marginTop: 12
-    }
-  }, FLOW_LEVELS.map(f => /*#__PURE__*/React.createElement("button", {
-    key: f,
-    onClick: () => setDay({
-      ...day,
-      periodFlow: f
-    }),
-    style: {
-      flex: 1,
-      padding: "8px 0",
-      borderRadius: 10,
-      border: `2px solid ${day.periodFlow === f ? "#D4547A" : PALETTE.line}`,
-      background: day.periodFlow === f ? "#D4547A22" : "#fff",
-      fontSize: 13,
-      fontWeight: 600
-    }
-  }, f))))), /*#__PURE__*/React.createElement("section", {
+  }, "✕"))))), activeMember?.enabled_features?.cycle && (() => {
+    const cycleInfo = computeCycleInfo(pastEntries, day, todayStr());
+    return /*#__PURE__*/React.createElement("section", {
+      style: {
+        marginBottom: 28
+      }
+    }, /*#__PURE__*/React.createElement("h2", {
+      className: "display",
+      style: {
+        fontSize: 18,
+        fontWeight: 600,
+        marginBottom: 10,
+        display: "flex",
+        alignItems: "center",
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("span", null, "🩸"), " Menstrual Cycle"), cycleInfo.hasData && /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: PALETTE.ink,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 14,
+        color: "#fff"
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 13,
+        opacity: 0.85
+      }
+    }, cycleInfo.cycleDay > 0 ? `Cycle day ${cycleInfo.cycleDay}` : "Tracking started"), cycleInfo.avgLength ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "4px 0 0",
+        fontSize: 14
+      }
+    }, "Next period estimated around ", /*#__PURE__*/React.createElement("b", null, fmtDate(cycleInfo.nextPeriod))), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "2px 0 0",
+        fontSize: 12,
+        opacity: 0.75
+      }
+    }, "Fertile window: ", fmtDate(cycleInfo.fertileStart), " – ", fmtDate(cycleInfo.fertileEnd), " · based on ", cycleInfo.cyclesLogged, " logged cycle", cycleInfo.cyclesLogged > 1 ? "s" : "")) : /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "4px 0 0",
+        fontSize: 12,
+        opacity: 0.75
+      }
+    }, "Log one more period start to see cycle length and predictions.")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: PALETTE.paper,
+        borderRadius: 16,
+        border: `1px solid ${PALETTE.line}`,
+        padding: 16,
+        marginBottom: 14
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 8px",
+        fontSize: 13,
+        fontWeight: 700
+      }
+    }, "Today"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8
+      }
+    }, ["", "spotting", "period"].map(s => /*#__PURE__*/React.createElement("button", {
+      key: s || "none",
+      onClick: () => setDay({
+        ...day,
+        periodStatus: s
+      }),
+      style: {
+        flex: 1,
+        padding: "8px 0",
+        borderRadius: 10,
+        border: `2px solid ${day.periodStatus === s ? "#D4547A" : PALETTE.line}`,
+        background: day.periodStatus === s ? "#D4547A22" : "#fff",
+        fontSize: 13,
+        fontWeight: 600,
+        textTransform: "capitalize"
+      }
+    }, s || "None"))), day.periodStatus === "period" && /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8,
+        marginTop: 10
+      }
+    }, FLOW_LEVELS.map(f => /*#__PURE__*/React.createElement("button", {
+      key: f,
+      onClick: () => setDay({
+        ...day,
+        periodFlow: f
+      }),
+      style: {
+        flex: 1,
+        padding: "8px 0",
+        borderRadius: 10,
+        border: `2px solid ${day.periodFlow === f ? "#D4547A" : PALETTE.line}`,
+        background: day.periodFlow === f ? "#D4547A22" : "#fff",
+        fontSize: 13,
+        fontWeight: 600
+      }
+    }, f))), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "16px 0 8px",
+        fontSize: 13,
+        fontWeight: 700
+      }
+    }, "Symptoms today"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8
+      }
+    }, CYCLE_SYMPTOM_TAGS.map(t => {
+      const on = day.cycleSymptoms.includes(t.key);
+      return /*#__PURE__*/React.createElement("button", {
+        key: t.key,
+        onClick: () => setDay({
+          ...day,
+          cycleSymptoms: on ? day.cycleSymptoms.filter(k => k !== t.key) : [...day.cycleSymptoms, t.key]
+        }),
+        style: {
+          padding: "7px 12px",
+          borderRadius: 999,
+          border: `1.5px solid ${on ? "#D4547A" : PALETTE.line}`,
+          background: on ? "#D4547A22" : "#fff",
+          fontSize: 12,
+          fontWeight: 600
+        }
+      }, t.emoji, " ", t.label);
+    })), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "16px 0 8px",
+        fontSize: 13,
+        fontWeight: 700
+      }
+    }, "Ovulation test (optional)"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8
+      }
+    }, ["", "negative", "positive"].map(r => /*#__PURE__*/React.createElement("button", {
+      key: r || "none",
+      onClick: () => setDay({
+        ...day,
+        ovulationTest: r
+      }),
+      style: {
+        flex: 1,
+        padding: "8px 0",
+        borderRadius: 10,
+        border: `2px solid ${day.ovulationTest === r ? PALETTE.gold : PALETTE.line}`,
+        background: day.ovulationTest === r ? PALETTE.gold + "33" : "#fff",
+        fontSize: 13,
+        fontWeight: 600,
+        textTransform: "capitalize"
+      }
+    }, r || "Not tested")))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: PALETTE.paper,
+        borderRadius: 16,
+        border: `1px solid ${PALETTE.line}`,
+        padding: 16,
+        marginBottom: 14
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 10px",
+        fontSize: 13,
+        fontWeight: 700
+      }
+    }, "Perimenopause tracking"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 12,
+        alignItems: "flex-end"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: PALETTE.muted
+      }
+    }, "Hot flashes today"), /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      min: "0",
+      value: day.hotFlashes,
+      onChange: e => setDay({
+        ...day,
+        hotFlashes: e.target.value
+      }),
+      style: {
+        width: "100%",
+        border: `1px solid ${PALETTE.line}`,
+        borderRadius: 8,
+        padding: 8,
+        fontSize: 14,
+        marginTop: 4
+      }
+    })), /*#__PURE__*/React.createElement("label", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        paddingBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: day.nightSweats,
+      onChange: e => setDay({
+        ...day,
+        nightSweats: e.target.checked
+      })
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 13
+      }
+    }, "Night sweats"))), /*#__PURE__*/React.createElement("input", {
+      value: day.cycleNote,
+      onChange: e => setDay({
+        ...day,
+        cycleNote: e.target.value
+      }),
+      placeholder: "Irregular cycle note (e.g. skipped this month)",
+      style: {
+        width: "100%",
+        border: "none",
+        borderBottom: `1px solid ${PALETTE.line}`,
+        background: "transparent",
+        padding: "8px 0",
+        fontSize: 14,
+        marginTop: 12,
+        outline: "none"
+      }
+    })), cycleInfo.hasData && cycleInfo.avgLength && /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: PALETTE.paper,
+        borderRadius: 16,
+        border: `1px solid ${PALETTE.line}`,
+        padding: 16
+      }
+    }, /*#__PURE__*/React.createElement(CycleCalendar, {
+      pastEntries: pastEntries,
+      todayEntry: day,
+      todayDate: todayStr(),
+      cycleInfo: cycleInfo
+    }), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 11,
+        color: PALETTE.muted,
+        marginTop: 10,
+        marginBottom: 0
+      }
+    }, "Estimates only, based on average cycle length — accuracy varies, especially with irregular cycles. Not a substitute for medical advice or birth control.")));
+  })(), /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 20
     }
@@ -2523,7 +3166,11 @@ function Dashboard({
       style: {
         margin: 0
       }
-    }, /*#__PURE__*/React.createElement("b", null, "Workout:"), " ", d.workoutActivity, " ", d.workoutMinutes && `— ${d.workoutMinutes} min`), d.journal && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("b", null, "Workout:"), " ", d.workoutActivity, " ", d.workoutMinutes && `— ${d.workoutMinutes} min`), d.periodStatus && /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: 0
+      }
+    }, "🩸 ", d.periodStatus === "period" ? `Period${d.periodFlow ? ` (${d.periodFlow})` : ""}` : "Spotting"), d.journal && /*#__PURE__*/React.createElement("p", {
       style: {
         margin: 0,
         fontStyle: "italic"
@@ -2769,27 +3416,44 @@ function StoolModal({
       background: typeId === t.id ? t.color + "22" : "#fff",
       textAlign: "left"
     }
+  }, /*#__PURE__*/React.createElement(BristolIcon, {
+    typeId: t.id,
+    color: t.color,
+    size: 40
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      width: 28,
-      height: 28,
-      borderRadius: "50%",
-      background: t.color,
-      flexShrink: 0
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8
     }
-  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", {
     style: {
-      display: "block",
       fontSize: 13,
       fontWeight: 700
     }
   }, "Type ", t.id, " — ", t.label), /*#__PURE__*/React.createElement("span", {
     style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: "#fff",
+      background: BRISTOL_GROUP_COLORS[t.group],
+      borderRadius: 999,
+      padding: "2px 8px",
+      whiteSpace: "nowrap"
+    }
+  }, t.group)), /*#__PURE__*/React.createElement("span", {
+    style: {
       display: "block",
       fontSize: 11,
-      color: PALETTE.muted
+      color: PALETTE.muted,
+      marginTop: 2
     }
-  }, t.detail))))), /*#__PURE__*/React.createElement("input", {
+  }, t.detail, " — ", t.meaning))))), /*#__PURE__*/React.createElement("input", {
     value: note,
     onChange: e => setNote(e.target.value),
     placeholder: "Note (optional)",
@@ -2823,6 +3487,7 @@ function UrineModal({
 }) {
   const [shadeIndex, setShadeIndex] = useState(null);
   const [note, setNote] = useState("");
+  const [bubbles, setBubbles] = useState(false);
   return /*#__PURE__*/React.createElement(ModalShell, {
     onClose: onClose
   }, /*#__PURE__*/React.createElement("h3", {
@@ -2841,7 +3506,7 @@ function UrineModal({
     style: {
       display: "flex",
       gap: 8,
-      margin: "16px 0",
+      margin: "16px 0 6px",
       justifyContent: "space-between"
     }
   }, URINE_SHADES.map((c, i) => /*#__PURE__*/React.createElement("button", {
@@ -2854,7 +3519,26 @@ function UrineModal({
       background: c,
       border: shadeIndex === i ? `3px solid ${PALETTE.ink}` : `1px solid ${PALETTE.line}`
     }
-  }))), /*#__PURE__*/React.createElement("input", {
+  }))), shadeIndex !== null && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.sageDeep,
+      fontWeight: 600,
+      marginBottom: 14
+    }
+  }, URINE_MEANINGS[shadeIndex]), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      fontSize: 13,
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: bubbles,
+    onChange: e => setBubbles(e.target.checked)
+  }), "Noticed bubbles or foam"), /*#__PURE__*/React.createElement("input", {
     value: note,
     onChange: e => setNote(e.target.value),
     placeholder: "Note (optional)",
@@ -2867,7 +3551,7 @@ function UrineModal({
       marginBottom: 16
     }
   }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => shadeIndex !== null && onSave(shadeIndex, note),
+    onClick: () => shadeIndex !== null && onSave(shadeIndex, note, bubbles),
     disabled: shadeIndex === null,
     style: {
       width: "100%",
