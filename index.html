@@ -181,6 +181,8 @@ function emptyDayData() {
     afternoonDrinks: [],
     snack: "",
     snackDrinks: [],
+    dinner: "",
+    dinnerDrinks: [],
     skippedDinner: true,
     massageStart: "",
     massageEnd: "",
@@ -400,7 +402,7 @@ function wellbeingEmoji(n) {
 }
 function beverageOzFromDay(d) {
   let total = 0;
-  ["morningDrinks", "afternoonDrinks", "snackDrinks"].forEach(key => {
+  ["morningDrinks", "afternoonDrinks", "snackDrinks", "dinnerDrinks"].forEach(key => {
     (d[key] || []).forEach(drink => {
       const amt = Number(drink.amount) || 0;
       const unit = drink.unit || "oz";
@@ -2132,8 +2134,8 @@ function Dashboard({
   }, "Urine color"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowUrine(true),
     style: {
-      background: "#B8812B",
-      color: "#fff",
+      background: "#E8B93A",
+      color: PALETTE.ink,
       border: "none",
       borderRadius: 999,
       padding: "6px 14px",
@@ -2291,7 +2293,12 @@ function Dashboard({
     label: m.label,
     day: day,
     setDay: setDay
-  })), /*#__PURE__*/React.createElement("label", {
+  })), !day.skippedDinner && /*#__PURE__*/React.createElement(MealDrinkRow, {
+    mealKey: "dinner",
+    label: "Dinner",
+    day: day,
+    setDay: setDay
+  }), /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -3248,11 +3255,11 @@ function Dashboard({
       style: {
         margin: 0
       }
-    }, "Urine logged at ", fmtTime(u.time))), (d.morning || d.afternoon || d.snack) && /*#__PURE__*/React.createElement("p", {
+    }, "Urine logged at ", fmtTime(u.time))), (d.morning || d.afternoon || d.snack || d.dinner) && /*#__PURE__*/React.createElement("p", {
       style: {
         margin: 0
       }
-    }, /*#__PURE__*/React.createElement("b", null, "Meals:"), " ", [d.morning, d.afternoon, d.snack].filter(Boolean).join(" · ")), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("b", null, "Meals:"), " ", [d.morning, d.afternoon, d.snack, d.dinner].filter(Boolean).join(" · ")), /*#__PURE__*/React.createElement("p", {
       style: {
         margin: 0
       }
@@ -3660,8 +3667,8 @@ function UrineModal({
       padding: 14,
       borderRadius: 14,
       border: "none",
-      background: "#B8812B",
-      color: "#fff",
+      background: "#E8B93A",
+      color: PALETTE.ink,
       fontWeight: 700,
       fontSize: 15,
       opacity: shadeIndex !== null ? 1 : 0.5
@@ -3945,7 +3952,9 @@ function MemberOnboarding({
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      backgroundImage: `linear-gradient(135deg, ${PALETTE.teal}F2 0%, ${PALETTE.sageDeep}E8 45%, ${PALETTE.goldDeep}CC 100%), url("banner.jpg")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -4820,7 +4829,9 @@ function AuthScreen({
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      backgroundImage: `linear-gradient(135deg, ${PALETTE.teal}F2 0%, ${PALETTE.sageDeep}E8 45%, ${PALETTE.goldDeep}CC 100%), url("banner.jpg")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -5021,7 +5032,9 @@ function ResetPasswordScreen({
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      backgroundImage: `linear-gradient(135deg, ${PALETTE.teal}F2 0%, ${PALETTE.sageDeep}E8 45%, ${PALETTE.goldDeep}CC 100%), url("banner.jpg")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
