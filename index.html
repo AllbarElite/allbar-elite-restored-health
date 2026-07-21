@@ -181,6 +181,8 @@ function emptyDayData() {
     afternoonDrinks: [],
     snack: "",
     snackDrinks: [],
+    dinner: "",
+    dinnerDrinks: [],
     skippedDinner: true,
     massageStart: "",
     massageEnd: "",
@@ -268,6 +270,14 @@ const DEFAULT_FEATURES = {
   weight: false,
   cycle: false,
   visits: false
+};
+const DEFAULT_REMINDER_PREFS = {
+  water: true,
+  medications: true,
+  workout: true,
+  remedies: true,
+  followupEnabled: true,
+  followupMinutes: 10
 };
 const FEATURE_LIST = [{
   key: "meals",
@@ -400,7 +410,7 @@ function wellbeingEmoji(n) {
 }
 function beverageOzFromDay(d) {
   let total = 0;
-  ["morningDrinks", "afternoonDrinks", "snackDrinks"].forEach(key => {
+  ["morningDrinks", "afternoonDrinks", "snackDrinks", "dinnerDrinks"].forEach(key => {
     (d[key] || []).forEach(drink => {
       const amt = Number(drink.amount) || 0;
       const unit = drink.unit || "oz";
@@ -970,6 +980,7 @@ function Dashboard({
   const [goals, setGoals] = useState([]);
   const [goalLogs, setGoalLogs] = useState({});
   const [showAddGoal, setShowAddGoal] = useState(false);
+  const [confirmDeleteGoalId, setConfirmDeleteGoalId] = useState(null);
   const [showAddMed, setShowAddMed] = useState(false);
   const [showWeight, setShowWeight] = useState(false);
   const [visits, setVisits] = useState([]);
@@ -1117,6 +1128,7 @@ function Dashboard({
       wake_time: form.wakeTime || "07:00",
       sleep_time: form.sleepTime || "21:00",
       enabled_features: form.features || DEFAULT_FEATURES,
+      reminder_prefs: DEFAULT_REMINDER_PREFS,
       user_id: authUser.id,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York"
     };
@@ -1159,7 +1171,8 @@ function Dashboard({
       height_in: form.height ? Number(form.height) : null,
       wake_time: form.wakeTime || "07:00",
       sleep_time: form.sleepTime || "21:00",
-      enabled_features: form.features || DEFAULT_FEATURES
+      enabled_features: form.features || DEFAULT_FEATURES,
+      reminder_prefs: form.reminderPrefs || DEFAULT_REMINDER_PREFS
     };
     const {
       error
@@ -1211,16 +1224,20 @@ function Dashboard({
         });
       }
       const subJson = sub.toJSON();
-      const {
-        error
-      } = await sb.from("push_subscriptions").insert({
-        id: uid("sub"),
-        user_id: authUser.id,
-        endpoint: subJson.endpoint,
-        p256dh: subJson.keys.p256dh,
-        auth_key: subJson.keys.auth
-      });
-      if (error && !error.message?.includes("duplicate")) throw error;
+      const existing = await sb.from("push_subscriptions").select("*").eq("endpoint", subJson.endpoint);
+      const alreadyThere = (existing.data || []).length > 0;
+      if (!alreadyThere) {
+        const {
+          error
+        } = await sb.from("push_subscriptions").insert({
+          id: uid("sub"),
+          user_id: authUser.id,
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys.p256dh,
+          auth_key: subJson.keys.auth
+        });
+        if (error && !error.message?.includes("duplicate")) throw error;
+      }
       setNotifStatus("subscribed");
     } catch (e) {
       setNotifStatus("error");
@@ -1834,7 +1851,27 @@ function Dashboard({
       fontSize: 13,
       color: PALETTE.muted
     }
-  }, "Add anything you want to track daily — vitamins, drops, stretches, anything.")) : /*#__PURE__*/React.createElement("div", {
+  }, "Add anything you want to track daily — vitamins, drops, stretches, anything.")) : /*#__PURE__*/React.createElement(React.Fragment, null, (() => {
+    const done = customGoals.filter(g => (goalLogs[g.id] || 0) >= g.target_count).length;
+    const allDone = done === customGoals.length;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 10,
+        padding: "8px 12px",
+        borderRadius: 12,
+        background: allDone ? PALETTE.sageDeep : PALETTE.cream
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 13,
+        fontWeight: 700,
+        color: allDone ? "#fff" : PALETTE.ink
+      }
+    }, allDone ? "🎉 All daily goals met today!" : `${done} of ${customGoals.length} goals completed today`));
+  })(), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -1842,6 +1879,7 @@ function Dashboard({
     }
   }, customGoals.map(g => {
     const count = goalLogs[g.id] || 0;
+    const confirming = confirmDeleteGoalId === g.id;
     return /*#__PURE__*/React.createElement("div", {
       key: g.id,
       style: {
@@ -1853,7 +1891,47 @@ function Dashboard({
         alignItems: "center",
         gap: 12
       }
+    }, confirming ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 8px",
+        fontSize: 12,
+        color: PALETTE.muted
+      }
+    }, "Remove \"", g.name, "\"?"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 6
+      }
     }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(null),
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: `1px solid ${PALETTE.line}`,
+        background: "#fff"
+      }
+    }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        deleteGoal(g.id);
+        setConfirmDeleteGoalId(null);
+      },
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: "none",
+        background: "#B0507E",
+        color: "#fff",
+        fontWeight: 700
+      }
+    }, "Remove"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       onClick: () => incrementGoal(g.id, g.target_count),
       style: {
         background: "none",
@@ -1878,18 +1956,23 @@ function Dashboard({
         textOverflow: "ellipsis",
         whiteSpace: "nowrap"
       }
-    }, g.name), /*#__PURE__*/React.createElement("button", {
-      onClick: () => deleteGoal(g.id),
+    }, g.name), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "1px 0 2px",
+        fontSize: 10,
+        color: PALETTE.muted
+      }
+    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(g.id),
       style: {
         background: "none",
         border: "none",
         color: PALETTE.muted,
         fontSize: 11,
-        padding: 0,
-        marginTop: 2
+        padding: 0
       }
-    }, "Remove")));
-  }))), weekSummary && /*#__PURE__*/React.createElement("section", {
+    }, "Remove"))));
+  })))), weekSummary && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -2132,8 +2215,8 @@ function Dashboard({
   }, "Urine color"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowUrine(true),
     style: {
-      background: "#B8812B",
-      color: "#fff",
+      background: "#E8B93A",
+      color: PALETTE.ink,
       border: "none",
       borderRadius: 999,
       padding: "6px 14px",
@@ -2291,7 +2374,12 @@ function Dashboard({
     label: m.label,
     day: day,
     setDay: setDay
-  })), /*#__PURE__*/React.createElement("label", {
+  })), !day.skippedDinner && /*#__PURE__*/React.createElement(MealDrinkRow, {
+    mealKey: "dinner",
+    label: "Dinner",
+    day: day,
+    setDay: setDay
+  }), /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -2526,7 +2614,27 @@ function Dashboard({
       fontSize: 13,
       color: PALETTE.muted
     }
-  }, "Add a medication or vitamin to track doses — e.g. \"Drops, 2x day.\"")) : /*#__PURE__*/React.createElement("div", {
+  }, "Add a medication or vitamin to track doses — e.g. \"Drops, 2x day.\"")) : /*#__PURE__*/React.createElement(React.Fragment, null, (() => {
+    const done = medications.filter(m => (goalLogs[m.id] || 0) >= m.target_count).length;
+    const allDone = done === medications.length;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 10,
+        padding: "8px 12px",
+        borderRadius: 12,
+        background: allDone ? PALETTE.sageDeep : PALETTE.cream
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 13,
+        fontWeight: 700,
+        color: allDone ? "#fff" : PALETTE.ink
+      }
+    }, allDone ? "🎉 All doses taken today!" : `${done} of ${medications.length} completed today`));
+  })(), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -2534,6 +2642,7 @@ function Dashboard({
     }
   }, medications.map(m => {
     const count = goalLogs[m.id] || 0;
+    const confirming = confirmDeleteGoalId === m.id;
     return /*#__PURE__*/React.createElement("div", {
       key: m.id,
       style: {
@@ -2545,7 +2654,47 @@ function Dashboard({
         alignItems: "center",
         gap: 12
       }
+    }, confirming ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 8px",
+        fontSize: 12,
+        color: PALETTE.muted
+      }
+    }, "Remove \"", m.name, "\"?"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 6
+      }
     }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(null),
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: `1px solid ${PALETTE.line}`,
+        background: "#fff"
+      }
+    }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        deleteGoal(m.id);
+        setConfirmDeleteGoalId(null);
+      },
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: "none",
+        background: "#B0507E",
+        color: "#fff",
+        fontWeight: 700
+      }
+    }, "Remove"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       onClick: () => incrementGoal(m.id, m.target_count),
       style: {
         background: "none",
@@ -2576,18 +2725,23 @@ function Dashboard({
         fontSize: 11,
         color: PALETTE.muted
       }
-    }, m.dosage), /*#__PURE__*/React.createElement("button", {
-      onClick: () => deleteGoal(m.id),
+    }, m.dosage), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "1px 0 2px",
+        fontSize: 10,
+        color: PALETTE.muted
+      }
+    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(m.id),
       style: {
         background: "none",
         border: "none",
         color: PALETTE.muted,
         fontSize: 11,
-        padding: 0,
-        marginTop: 2
+        padding: 0
       }
-    }, "Remove")));
-  }))), activeMember?.enabled_features?.sleep && /*#__PURE__*/React.createElement("section", {
+    }, "Remove"))));
+  })))), activeMember?.enabled_features?.sleep && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3248,11 +3402,11 @@ function Dashboard({
       style: {
         margin: 0
       }
-    }, "Urine logged at ", fmtTime(u.time))), (d.morning || d.afternoon || d.snack) && /*#__PURE__*/React.createElement("p", {
+    }, "Urine logged at ", fmtTime(u.time))), (d.morning || d.afternoon || d.snack || d.dinner) && /*#__PURE__*/React.createElement("p", {
       style: {
         margin: 0
       }
-    }, /*#__PURE__*/React.createElement("b", null, "Meals:"), " ", [d.morning, d.afternoon, d.snack].filter(Boolean).join(" · ")), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("b", null, "Meals:"), " ", [d.morning, d.afternoon, d.snack, d.dinner].filter(Boolean).join(" · ")), /*#__PURE__*/React.createElement("p", {
       style: {
         margin: 0
       }
@@ -3660,8 +3814,8 @@ function UrineModal({
       padding: 14,
       borderRadius: 14,
       border: "none",
-      background: "#B8812B",
-      color: "#fff",
+      background: "#E8B93A",
+      color: PALETTE.ink,
       fontWeight: 700,
       fontSize: 15,
       opacity: shadeIndex !== null ? 1 : 0.5
@@ -3945,7 +4099,9 @@ function MemberOnboarding({
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      backgroundImage: `linear-gradient(135deg, ${PALETTE.teal}F0 0%, ${PALETTE.sageDeep}D0 30%, ${PALETTE.sageDeep}70 55%, ${PALETTE.goldDeep}55 100%), url("banner.jpg")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -3963,27 +4119,46 @@ function MemberOnboarding({
     style: {
       display: "flex",
       alignItems: "center",
-      gap: 10,
-      marginBottom: 20
+      gap: 14,
+      marginBottom: 22
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.ink,
+      borderRadius: 16,
+      padding: 10,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
     }
   }, /*#__PURE__*/React.createElement("img", {
     src: LOGO_SRC,
     style: {
-      height: 36
+      height: 52,
+      display: "block"
     }
-  }), /*#__PURE__*/React.createElement("span", {
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
-      fontWeight: 700,
-      color: PALETTE.sageDeep,
+      fontWeight: 800,
+      color: PALETTE.goldDeep,
       textTransform: "uppercase",
-      letterSpacing: "0.1em"
+      letterSpacing: "0.14em",
+      margin: 0
     }
-  }, "Restored Health")), step === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
+  }, "AllBar Elite"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 17,
+      fontWeight: 700,
+      color: PALETTE.ink,
+      margin: 0
+    }
+  }, "Restored Health"))), step === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 22,
-      marginTop: 0
+      marginTop: 0,
+      color: PALETTE.goldDeep
     }
   }, "Who's this profile for?"), /*#__PURE__*/React.createElement("p", {
     style: {
@@ -4007,7 +4182,8 @@ function MemberOnboarding({
     className: "display",
     style: {
       fontSize: 22,
-      marginTop: 0
+      marginTop: 0,
+      color: PALETTE.goldDeep
     }
   }, "A little more"), /*#__PURE__*/React.createElement("p", {
     style: {
@@ -4072,7 +4248,8 @@ function MemberOnboarding({
     className: "display",
     style: {
       fontSize: 22,
-      marginTop: 0
+      marginTop: 0,
+      color: PALETTE.goldDeep
     }
   }, "Daily rhythm"), /*#__PURE__*/React.createElement("p", {
     style: {
@@ -4117,7 +4294,8 @@ function MemberOnboarding({
     className: "display",
     style: {
       fontSize: 22,
-      marginTop: 0
+      marginTop: 0,
+      color: PALETTE.goldDeep
     }
   }, "Finishing touch"), /*#__PURE__*/React.createElement("p", {
     style: {
@@ -4207,7 +4385,8 @@ function MemberOnboarding({
     className: "display",
     style: {
       fontSize: 22,
-      marginTop: 0
+      marginTop: 0,
+      color: PALETTE.goldDeep
     }
   }, "What should this profile track?"), /*#__PURE__*/React.createElement("p", {
     style: {
@@ -4355,6 +4534,10 @@ function EditProfileModal({
   const [features, setFeatures] = useState({
     ...DEFAULT_FEATURES,
     ...(member.enabled_features || {})
+  });
+  const [reminderPrefs, setReminderPrefs] = useState({
+    ...DEFAULT_REMINDER_PREFS,
+    ...(member.reminder_prefs || {})
   });
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const handlePhoto = e => {
@@ -4639,7 +4822,108 @@ function EditProfileModal({
       ...prev,
       [f.key]: !prev[f.key]
     }))
-  })))), error && /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      margin: "20px 0 8px"
+    }
+  }, "Reminders"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, [{
+    key: "water",
+    label: "Water reminders"
+  }, {
+    key: "medications",
+    label: "Medication/vitamin reminders"
+  }, {
+    key: "workout",
+    label: "Workout reminders"
+  }, {
+    key: "remedies",
+    label: "Massage & heat reminders"
+  }].map(r => /*#__PURE__*/React.createElement("div", {
+    key: r.key,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, r.label), /*#__PURE__*/React.createElement(Toggle, {
+    on: reminderPrefs[r.key] !== false,
+    onClick: () => setReminderPrefs(prev => ({
+      ...prev,
+      [r.key]: prev[r.key] === false ? true : false
+    }))
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      paddingRight: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, "Follow-up if not done"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "2px 0 0",
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "One gentle nudge, never repeated")), /*#__PURE__*/React.createElement(Toggle, {
+    on: reminderPrefs.followupEnabled !== false,
+    onClick: () => setReminderPrefs(prev => ({
+      ...prev,
+      followupEnabled: prev.followupEnabled === false ? true : false
+    }))
+  })), reminderPrefs.followupEnabled !== false && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 10
+    }
+  }, [5, 10, 15].map(mins => /*#__PURE__*/React.createElement("button", {
+    key: mins,
+    onClick: () => setReminderPrefs(prev => ({
+      ...prev,
+      followupMinutes: mins
+    })),
+    style: {
+      flex: 1,
+      padding: "8px 0",
+      borderRadius: 10,
+      border: `2px solid ${(reminderPrefs.followupMinutes || 10) === mins ? PALETTE.sageDeep : PALETTE.line}`,
+      background: (reminderPrefs.followupMinutes || 10) === mins ? PALETTE.sageDeep + "22" : "#fff",
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, mins, " min"))))), error && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#FDF0F0",
       border: "1px solid #E8B8B8",
@@ -4682,7 +4966,8 @@ function EditProfileModal({
       color,
       photoFile,
       avatarEmoji,
-      features
+      features,
+      reminderPrefs
     }),
     style: {
       flex: 2,
@@ -4820,7 +5105,9 @@ function AuthScreen({
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      backgroundImage: `linear-gradient(135deg, ${PALETTE.teal}F0 0%, ${PALETTE.sageDeep}D0 30%, ${PALETTE.sageDeep}70 55%, ${PALETTE.goldDeep}55 100%), url("banner.jpg")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -4838,28 +5125,47 @@ function AuthScreen({
     style: {
       display: "flex",
       alignItems: "center",
-      gap: 10,
-      marginBottom: 20
+      gap: 14,
+      marginBottom: 22
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.ink,
+      borderRadius: 16,
+      padding: 10,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
     }
   }, /*#__PURE__*/React.createElement("img", {
     src: LOGO_SRC,
     style: {
-      height: 36
+      height: 52,
+      display: "block"
     },
     alt: "logo"
-  }), /*#__PURE__*/React.createElement("span", {
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
-      fontWeight: 700,
-      color: PALETTE.sageDeep,
+      fontWeight: 800,
+      color: PALETTE.goldDeep,
       textTransform: "uppercase",
-      letterSpacing: "0.1em"
+      letterSpacing: "0.14em",
+      margin: 0
     }
-  }, "Restored Health")), /*#__PURE__*/React.createElement("h2", {
+  }, "AllBar Elite"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 17,
+      fontWeight: 700,
+      color: PALETTE.ink,
+      margin: 0
+    }
+  }, "Restored Health"))), /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 22,
-      marginTop: 0
+      marginTop: 0,
+      color: PALETTE.goldDeep
     }
   }, titles[mode]), /*#__PURE__*/React.createElement("p", {
     style: {
@@ -5021,7 +5327,9 @@ function ResetPasswordScreen({
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: `linear-gradient(135deg, ${PALETTE.teal} 0%, ${PALETTE.sageDeep} 55%, ${PALETTE.goldDeep} 130%)`,
+      backgroundImage: `linear-gradient(135deg, ${PALETTE.teal}F0 0%, ${PALETTE.sageDeep}D0 30%, ${PALETTE.sageDeep}70 55%, ${PALETTE.goldDeep}55 100%), url("banner.jpg")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -5039,28 +5347,47 @@ function ResetPasswordScreen({
     style: {
       display: "flex",
       alignItems: "center",
-      gap: 10,
-      marginBottom: 20
+      gap: 14,
+      marginBottom: 22
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.ink,
+      borderRadius: 16,
+      padding: 10,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
     }
   }, /*#__PURE__*/React.createElement("img", {
     src: LOGO_SRC,
     style: {
-      height: 36
+      height: 52,
+      display: "block"
     },
     alt: "logo"
-  }), /*#__PURE__*/React.createElement("span", {
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
-      fontWeight: 700,
-      color: PALETTE.sageDeep,
+      fontWeight: 800,
+      color: PALETTE.goldDeep,
       textTransform: "uppercase",
-      letterSpacing: "0.1em"
+      letterSpacing: "0.14em",
+      margin: 0
     }
-  }, "Restored Health")), /*#__PURE__*/React.createElement("h2", {
+  }, "AllBar Elite"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 17,
+      fontWeight: 700,
+      color: PALETTE.ink,
+      margin: 0
+    }
+  }, "Restored Health"))), /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 22,
-      marginTop: 0
+      marginTop: 0,
+      color: PALETTE.goldDeep
     }
   }, "Set a new password"), /*#__PURE__*/React.createElement("p", {
     style: {
