@@ -972,6 +972,7 @@ function Dashboard({
   const [goals, setGoals] = useState([]);
   const [goalLogs, setGoalLogs] = useState({});
   const [showAddGoal, setShowAddGoal] = useState(false);
+  const [confirmDeleteGoalId, setConfirmDeleteGoalId] = useState(null);
   const [showAddMed, setShowAddMed] = useState(false);
   const [showWeight, setShowWeight] = useState(false);
   const [visits, setVisits] = useState([]);
@@ -1213,16 +1214,20 @@ function Dashboard({
         });
       }
       const subJson = sub.toJSON();
-      const {
-        error
-      } = await sb.from("push_subscriptions").insert({
-        id: uid("sub"),
-        user_id: authUser.id,
-        endpoint: subJson.endpoint,
-        p256dh: subJson.keys.p256dh,
-        auth_key: subJson.keys.auth
-      });
-      if (error && !error.message?.includes("duplicate")) throw error;
+      const existing = await sb.from("push_subscriptions").select("*").eq("endpoint", subJson.endpoint);
+      const alreadyThere = (existing.data || []).length > 0;
+      if (!alreadyThere) {
+        const {
+          error
+        } = await sb.from("push_subscriptions").insert({
+          id: uid("sub"),
+          user_id: authUser.id,
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys.p256dh,
+          auth_key: subJson.keys.auth
+        });
+        if (error && !error.message?.includes("duplicate")) throw error;
+      }
       setNotifStatus("subscribed");
     } catch (e) {
       setNotifStatus("error");
@@ -1836,7 +1841,27 @@ function Dashboard({
       fontSize: 13,
       color: PALETTE.muted
     }
-  }, "Add anything you want to track daily — vitamins, drops, stretches, anything.")) : /*#__PURE__*/React.createElement("div", {
+  }, "Add anything you want to track daily — vitamins, drops, stretches, anything.")) : /*#__PURE__*/React.createElement(React.Fragment, null, (() => {
+    const done = customGoals.filter(g => (goalLogs[g.id] || 0) >= g.target_count).length;
+    const allDone = done === customGoals.length;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 10,
+        padding: "8px 12px",
+        borderRadius: 12,
+        background: allDone ? PALETTE.sageDeep : PALETTE.cream
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 13,
+        fontWeight: 700,
+        color: allDone ? "#fff" : PALETTE.ink
+      }
+    }, allDone ? "🎉 All daily goals met today!" : `${done} of ${customGoals.length} goals completed today`));
+  })(), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -1844,6 +1869,7 @@ function Dashboard({
     }
   }, customGoals.map(g => {
     const count = goalLogs[g.id] || 0;
+    const confirming = confirmDeleteGoalId === g.id;
     return /*#__PURE__*/React.createElement("div", {
       key: g.id,
       style: {
@@ -1855,7 +1881,47 @@ function Dashboard({
         alignItems: "center",
         gap: 12
       }
+    }, confirming ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 8px",
+        fontSize: 12,
+        color: PALETTE.muted
+      }
+    }, "Remove \"", g.name, "\"?"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 6
+      }
     }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(null),
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: `1px solid ${PALETTE.line}`,
+        background: "#fff"
+      }
+    }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        deleteGoal(g.id);
+        setConfirmDeleteGoalId(null);
+      },
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: "none",
+        background: "#B0507E",
+        color: "#fff",
+        fontWeight: 700
+      }
+    }, "Remove"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       onClick: () => incrementGoal(g.id, g.target_count),
       style: {
         background: "none",
@@ -1880,18 +1946,23 @@ function Dashboard({
         textOverflow: "ellipsis",
         whiteSpace: "nowrap"
       }
-    }, g.name), /*#__PURE__*/React.createElement("button", {
-      onClick: () => deleteGoal(g.id),
+    }, g.name), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "1px 0 2px",
+        fontSize: 10,
+        color: PALETTE.muted
+      }
+    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(g.id),
       style: {
         background: "none",
         border: "none",
         color: PALETTE.muted,
         fontSize: 11,
-        padding: 0,
-        marginTop: 2
+        padding: 0
       }
-    }, "Remove")));
-  }))), weekSummary && /*#__PURE__*/React.createElement("section", {
+    }, "Remove"))));
+  })))), weekSummary && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -2533,7 +2604,27 @@ function Dashboard({
       fontSize: 13,
       color: PALETTE.muted
     }
-  }, "Add a medication or vitamin to track doses — e.g. \"Drops, 2x day.\"")) : /*#__PURE__*/React.createElement("div", {
+  }, "Add a medication or vitamin to track doses — e.g. \"Drops, 2x day.\"")) : /*#__PURE__*/React.createElement(React.Fragment, null, (() => {
+    const done = medications.filter(m => (goalLogs[m.id] || 0) >= m.target_count).length;
+    const allDone = done === medications.length;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 10,
+        padding: "8px 12px",
+        borderRadius: 12,
+        background: allDone ? PALETTE.sageDeep : PALETTE.cream
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 13,
+        fontWeight: 700,
+        color: allDone ? "#fff" : PALETTE.ink
+      }
+    }, allDone ? "🎉 All doses taken today!" : `${done} of ${medications.length} completed today`));
+  })(), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -2541,6 +2632,7 @@ function Dashboard({
     }
   }, medications.map(m => {
     const count = goalLogs[m.id] || 0;
+    const confirming = confirmDeleteGoalId === m.id;
     return /*#__PURE__*/React.createElement("div", {
       key: m.id,
       style: {
@@ -2552,7 +2644,47 @@ function Dashboard({
         alignItems: "center",
         gap: 12
       }
+    }, confirming ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 8px",
+        fontSize: 12,
+        color: PALETTE.muted
+      }
+    }, "Remove \"", m.name, "\"?"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 6
+      }
     }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(null),
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: `1px solid ${PALETTE.line}`,
+        background: "#fff"
+      }
+    }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        deleteGoal(m.id);
+        setConfirmDeleteGoalId(null);
+      },
+      style: {
+        flex: 1,
+        fontSize: 11,
+        padding: "6px 0",
+        borderRadius: 8,
+        border: "none",
+        background: "#B0507E",
+        color: "#fff",
+        fontWeight: 700
+      }
+    }, "Remove"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       onClick: () => incrementGoal(m.id, m.target_count),
       style: {
         background: "none",
@@ -2583,18 +2715,23 @@ function Dashboard({
         fontSize: 11,
         color: PALETTE.muted
       }
-    }, m.dosage), /*#__PURE__*/React.createElement("button", {
-      onClick: () => deleteGoal(m.id),
+    }, m.dosage), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "1px 0 2px",
+        fontSize: 10,
+        color: PALETTE.muted
+      }
+    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConfirmDeleteGoalId(m.id),
       style: {
         background: "none",
         border: "none",
         color: PALETTE.muted,
         fontSize: 11,
-        padding: 0,
-        marginTop: 2
+        padding: 0
       }
-    }, "Remove")));
-  }))), activeMember?.enabled_features?.sleep && /*#__PURE__*/React.createElement("section", {
+    }, "Remove"))));
+  })))), activeMember?.enabled_features?.sleep && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
