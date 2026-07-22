@@ -18,13 +18,16 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'Inter', sans-serif; }
+  :root { --paper: #FFFFFF; --ink: #1E2E29; --cream: #FDF9F0; --line: #E7E0D0; --muted: #8C8371; }
+  body { margin: 0; font-family: 'Inter', sans-serif; background: var(--cream); }
   .display { font-family: 'Fraunces', serif; }
   ::selection { background: #C9A64A55; }
+  input, select, textarea { background: var(--paper); color: var(--ink); }
+  input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
   input[type=range] { -webkit-appearance: none; background: transparent; }
   input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #E4DDCC; }
   input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; margin-top: -7px; width: 20px; height: 20px; border-radius: 50%; background: #0A6B58; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
-  button { cursor: pointer; font-family: inherit; }
+  button { cursor: pointer; font-family: inherit; color: inherit; }
   ::-webkit-scrollbar { width: 8px; }
   ::-webkit-scrollbar-thumb { background: #D9D2C2; border-radius: 4px; }
 </style>
@@ -94,6 +97,7 @@ const LOGO_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAFoCAYAAAB6
 const BASE_LIGHT = {
   cream: "#FDF9F0",
   ink: "#1E2E29",
+  inkSurface: "#16231F",
   paper: "#FFFFFF",
   sage: "#0E8C74",
   sageDeep: "#0A6B58",
@@ -110,6 +114,7 @@ const BASE_LIGHT = {
 const BASE_DARK = {
   cream: "#14201C",
   ink: "#F0EDE4",
+  inkSurface: "#0C1512",
   paper: "#1E2C27",
   sage: "#2FBE9A",
   sageDeep: "#26A184",
@@ -126,6 +131,7 @@ const BASE_DARK = {
 let PALETTE = {
   ...BASE_LIGHT
 };
+const DEEP_TEXT = "#FBF7EC";
 function isLightHex(hex) {
   if (!hex) return false;
   const c = hex.replace("#", "");
@@ -146,6 +152,14 @@ function applyTheme(darkMode, accentHex) {
     PALETTE.accentIsLight = isLightHex(accentHex);
   } else {
     PALETTE.accentIsLight = false;
+  }
+  if (typeof document !== "undefined") {
+    const root = document.documentElement.style;
+    root.setProperty("--paper", PALETTE.paper);
+    root.setProperty("--ink", PALETTE.ink);
+    root.setProperty("--cream", PALETTE.cream);
+    root.setProperty("--line", PALETTE.line);
+    root.setProperty("--muted", PALETTE.muted);
   }
 }
 const MEMBER_COLORS = ["#0E8C74", "#E8A33D", "#E36A50", "#3D8FBF", "#8B5FB0", "#B0507E", "#D4547A", "#1A1A1A", "#C9A64A"];
@@ -851,7 +865,7 @@ function MealDrinkRow({
       border: `1px solid ${PALETTE.line}`,
       padding: "6px 8px",
       fontSize: 13,
-      background: "#fff"
+      background: PALETTE.paper
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
@@ -890,7 +904,7 @@ function MealDrinkRow({
       border: `1px solid ${PALETTE.line}`,
       padding: "6px 8px",
       fontSize: 13,
-      background: "#fff"
+      background: PALETTE.paper
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: "oz"
@@ -1623,7 +1637,7 @@ function Dashboard({
   }, "AllBar Elite"), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 11,
-      color: PALETTE.cream,
+      color: DEEP_TEXT,
       opacity: 0.85,
       margin: 0
     }
@@ -1759,7 +1773,7 @@ function Dashboard({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      background: PALETTE.ink,
+      background: PALETTE.inkSurface,
       borderRadius: 20,
       padding: 20,
       display: "flex",
@@ -2150,13 +2164,13 @@ function Dashboard({
     }
   }, "📅"), " This week"), /*#__PURE__*/React.createElement("div", {
     style: {
-      background: PALETTE.ink,
+      background: PALETTE.inkSurface,
       borderRadius: 20,
       padding: 20,
       display: "grid",
       gridTemplateColumns: "1fr 1fr 1fr",
       gap: 16,
-      color: PALETTE.cream
+      color: DEEP_TEXT
     }
   }, [[weekSummary.avgWellbeing, "avg wellbeing"], [weekSummary.days, "days logged"], [weekSummary.waterTotal + " oz", "fluids"], [weekSummary.massageMin, "massage min"], [weekSummary.heatDays, "heat pack days"], [weekSummary.workoutMin, "workout min"]].map(([val, label], i) => /*#__PURE__*/React.createElement("div", {
     key: i
@@ -3082,7 +3096,7 @@ function Dashboard({
       }
     }, /*#__PURE__*/React.createElement("span", null, "🩸"), " Menstrual Cycle"), cycleInfo.hasData && /*#__PURE__*/React.createElement("div", {
       style: {
-        background: PALETTE.ink,
+        background: PALETTE.inkSurface,
         borderRadius: 16,
         padding: 16,
         marginBottom: 14,
@@ -4459,7 +4473,7 @@ function MemberOnboarding({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      background: PALETTE.ink,
+      background: PALETTE.inkSurface,
       borderRadius: 16,
       padding: 10,
       display: "flex",
@@ -5465,7 +5479,7 @@ function AuthScreen({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      background: PALETTE.ink,
+      background: PALETTE.inkSurface,
       borderRadius: 16,
       padding: 10,
       display: "flex",
@@ -5687,7 +5701,7 @@ function ResetPasswordScreen({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      background: PALETTE.ink,
+      background: PALETTE.inkSurface,
       borderRadius: 16,
       padding: 10,
       display: "flex",
