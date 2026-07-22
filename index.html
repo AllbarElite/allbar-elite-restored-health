@@ -102,6 +102,7 @@ const PALETTE = {
 const MEMBER_COLORS = ["#0E8C74", "#E8A33D", "#E36A50", "#3D8FBF", "#8B5FB0", "#B0507E", "#D4547A", "#1A1A1A", "#C9A64A"];
 const AVATAR_EMOJIS = ["🌸", "🌻", "🦄", "🐶", "🐱", "🦁", "🐘", "🐻", "❤️", "💜", "⭐", "🌈", "🌙", "👑", "🤴", "🤴🏻", "🤴🏽", "🤴🏿", "👸", "👸🏻", "👸🏽", "👸🏿"];
 const BEVERAGE_OPTIONS = ["Tea", "Water", "Juice", "Other"];
+const REMEDY_TYPES = ["Hand massage", "Heat pack", "Vibrating heat pack", "Foot massage", "Other"];
 const SYMPTOM_TAGS = [{
   key: "nausea",
   label: "Nausea",
@@ -184,10 +185,7 @@ function emptyDayData() {
     dinner: "",
     dinnerDrinks: [],
     skippedDinner: true,
-    massageStart: "",
-    massageEnd: "",
-    heatPack: false,
-    remedyNotes: "",
+    remedies: [],
     workoutActivity: "",
     workoutMinutes: "",
     sleepHours: "",
@@ -1004,6 +1002,7 @@ function Dashboard({
   const [showCheckin, setShowCheckin] = useState(false);
   const [showTemp, setShowTemp] = useState(false);
   const [showStool, setShowStool] = useState(false);
+  const [showAddRemedy, setShowAddRemedy] = useState(false);
   const [showUrine, setShowUrine] = useState(false);
   const [expandedPast, setExpandedPast] = useState(null);
   const [pastEntries, setPastEntries] = useState([]);
@@ -1361,6 +1360,19 @@ function Dashboard({
     }));
     setShowStool(false);
   };
+  const addRemedy = (type, startTime, endTime, note) => {
+    setDay(prev => ({
+      ...prev,
+      remedies: [...prev.remedies, {
+        id: uid("remedy"),
+        type,
+        startTime,
+        endTime,
+        note
+      }]
+    }));
+    setShowAddRemedy(false);
+  };
   const addUrine = (shadeIndex, note, bubbles) => {
     setDay(prev => ({
       ...prev,
@@ -1411,8 +1423,12 @@ function Dashboard({
         wellSum += c.wellbeing;
         wellCount++;
       });
-      massageMin += minutesBetween(d.massageStart, d.massageEnd) || 0;
-      if (d.heatPack) heatDays++;
+      let hadHeatToday = false;
+      (d.remedies || []).forEach(r => {
+        massageMin += (r.startTime && r.endTime ? minutesBetween(r.startTime, r.endTime) : 0) || 0;
+        if (r.type && r.type.toLowerCase().includes("heat")) hadHeatToday = true;
+      });
+      if (hadHeatToday) heatDays++;
       if (d.skippedDinner) dinnerFreeDays++;
       waterTotal += beverageOzFromDay(d);
       workoutMin += Number(d.workoutMinutes) || 0;
@@ -2470,12 +2486,19 @@ function Dashboard({
     style: {
       marginBottom: 28
     }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10
+    }
   }, /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 18,
       fontWeight: 600,
-      marginBottom: 10,
+      margin: 0,
       display: "flex",
       alignItems: "center",
       gap: 8
@@ -2484,103 +2507,86 @@ function Dashboard({
     style: {
       color: PALETTE.coral
     }
-  }, "✋"), " Massage & Heat"), /*#__PURE__*/React.createElement("div", {
+  }, "✋"), " Massage & Heat"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowAddRemedy(true),
+    style: {
+      background: PALETTE.coral,
+      color: "#fff",
+      border: "none",
+      borderRadius: 999,
+      padding: "7px 16px",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "+ Log")), day.remedies.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 16,
-      border: `1px solid ${PALETTE.line}`,
-      padding: 16
+      border: `1px dashed ${PALETTE.line}`,
+      padding: 20,
+      textAlign: "center"
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: PALETTE.muted
+    }
+  }, "Log any massage or heat pack session, any time of day.")) : /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
-      gap: 12
+      flexDirection: "column",
+      gap: 8
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, day.remedies.slice().reverse().map(r => /*#__PURE__*/React.createElement("div", {
+    key: r.id,
     style: {
-      flex: 1
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 11,
-      color: PALETTE.muted
-    }
-  }, "Start"), /*#__PURE__*/React.createElement("input", {
-    type: "time",
-    value: day.massageStart,
-    onChange: e => setDay({
-      ...day,
-      massageStart: e.target.value
-    }),
-    style: {
-      width: "100%",
+      background: PALETTE.paper,
+      borderRadius: 14,
       border: `1px solid ${PALETTE.line}`,
-      borderRadius: 8,
-      padding: 8,
-      fontSize: 14
-    }
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      flex: 1
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 11,
-      color: PALETTE.muted
-    }
-  }, "End"), /*#__PURE__*/React.createElement("input", {
-    type: "time",
-    value: day.massageEnd,
-    onChange: e => setDay({
-      ...day,
-      massageEnd: e.target.value
-    }),
-    style: {
-      width: "100%",
-      border: `1px solid ${PALETTE.line}`,
-      borderRadius: 8,
-      padding: 8,
-      fontSize: 14
-    }
-  }))), day.massageStart && day.massageEnd && /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 12,
-      color: PALETTE.sageDeep,
-      marginTop: 8
-    }
-  }, minutesBetween(day.massageStart, day.massageEnd), " min massage"), /*#__PURE__*/React.createElement("label", {
-    style: {
+      padding: 12,
       display: "flex",
       alignItems: "center",
-      gap: 8,
-      fontSize: 14,
-      marginTop: 14
+      gap: 10
     }
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: day.heatPack,
-    onChange: e => setDay({
-      ...day,
-      heatPack: e.target.checked
-    })
-  }), "🔥 Heat pack"), /*#__PURE__*/React.createElement("input", {
-    value: day.remedyNotes,
-    onChange: e => setDay({
-      ...day,
-      remedyNotes: e.target.value
-    }),
-    placeholder: "Notes (area, how it felt...)",
+  }, /*#__PURE__*/React.createElement("span", {
     style: {
-      width: "100%",
-      border: "none",
-      borderBottom: `1px solid ${PALETTE.line}`,
-      background: "transparent",
-      padding: "8px 0",
-      fontSize: 14,
-      marginTop: 10,
-      outline: "none"
+      fontSize: 20
     }
-  }))), activeMember?.enabled_features?.workout !== false && /*#__PURE__*/React.createElement("section", {
+  }, r.type === "Heat pack" || r.type === "Vibrating heat pack" ? "🔥" : "✋"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, r.type), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, fmtTime(r.startTime), r.endTime ? ` – ${fmtTime(r.endTime)} (${minutesBetween(r.startTime, r.endTime)} min)` : ""), r.note && /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "2px 0 0",
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, r.note)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setDay({
+      ...day,
+      remedies: day.remedies.filter(x => x.id !== r.id)
+    }),
+    style: {
+      background: "none",
+      border: "none",
+      color: PALETTE.muted,
+      fontSize: 15
+    }
+  }, "✕"))))), activeMember?.enabled_features?.workout !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3507,21 +3513,18 @@ function Dashboard({
       style: {
         margin: 0
       }
-    }, /*#__PURE__*/React.createElement("b", null, "Fluids:"), " ", beverageOzFromDay(d), " oz")), (d.massageStart || d.heatPack) && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, "Fluids:"), " ", beverageOzFromDay(d), " oz")), (d.remedies || []).length > 0 && /*#__PURE__*/React.createElement("div", {
       style: {
         background: PALETTE.sky + "14",
         borderRadius: 10,
         padding: "8px 10px"
       }
-    }, d.massageStart && d.massageEnd && /*#__PURE__*/React.createElement("p", {
+    }, d.remedies.map(r => /*#__PURE__*/React.createElement("p", {
+      key: r.id,
       style: {
         margin: 0
       }
-    }, /*#__PURE__*/React.createElement("b", null, "Massage:"), " ", minutesBetween(d.massageStart, d.massageEnd), " min"), d.heatPack && /*#__PURE__*/React.createElement("p", {
-      style: {
-        margin: 0
-      }
-    }, "Heat pack used")), d.workoutActivity && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, r.type, ":"), " ", fmtTime(r.startTime), r.endTime ? ` – ${fmtTime(r.endTime)} (${minutesBetween(r.startTime, r.endTime)} min)` : ""))), d.workoutActivity && /*#__PURE__*/React.createElement("div", {
       style: {
         background: PALETTE.purple + "14",
         borderRadius: 10,
@@ -3569,6 +3572,9 @@ function Dashboard({
   }), showStool && /*#__PURE__*/React.createElement(StoolModal, {
     onClose: () => setShowStool(false),
     onSave: addStool
+  }), showAddRemedy && /*#__PURE__*/React.createElement(RemedyModal, {
+    onClose: () => setShowAddRemedy(false),
+    onSave: addRemedy
   }), showUrine && /*#__PURE__*/React.createElement(UrineModal, {
     onClose: () => setShowUrine(false),
     onSave: addUrine
@@ -3855,6 +3861,145 @@ function StoolModal({
       fontWeight: 700,
       fontSize: 15,
       opacity: typeId ? 1 : 0.5
+    }
+  }, "Save"));
+}
+function RemedyModal({
+  onClose,
+  onSave
+}) {
+  const [type, setType] = useState("");
+  const [customLabel, setCustomLabel] = useState("");
+  const [startTime, setStartTime] = useState(nowTime());
+  const [endTime, setEndTime] = useState("");
+  const [note, setNote] = useState("");
+  const submit = () => {
+    if (!type) return;
+    if (type === "Other" && !customLabel.trim()) return;
+    onSave(type === "Other" ? customLabel.trim() : type, startTime, endTime, note);
+  };
+  return /*#__PURE__*/React.createElement(ModalShell, {
+    onClose: onClose
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "display",
+    style: {
+      fontSize: 20,
+      marginTop: 0
+    }
+  }, "Log massage or heat"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+      margin: "14px 0"
+    }
+  }, REMEDY_TYPES.map(t => /*#__PURE__*/React.createElement("button", {
+    key: t,
+    onClick: () => setType(t),
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      padding: 12,
+      borderRadius: 12,
+      border: `2px solid ${type === t ? PALETTE.coral : PALETTE.line}`,
+      background: type === t ? PALETTE.coral + "22" : "#fff",
+      textAlign: "left"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 18
+    }
+  }, t.includes("Heat") ? "🔥" : "✋"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, t)))), type === "Other" && /*#__PURE__*/React.createElement("input", {
+    value: customLabel,
+    onChange: e => setCustomLabel(e.target.value),
+    placeholder: "What kind?",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 14,
+      marginBottom: 14
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "Start time"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: startTime,
+    onChange: e => setStartTime(e.target.value),
+    style: {
+      width: "100%",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 8,
+      padding: 8,
+      fontSize: 14,
+      marginTop: 4
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "End time (optional)"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: endTime,
+    onChange: e => setEndTime(e.target.value),
+    style: {
+      width: "100%",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 8,
+      padding: 8,
+      fontSize: 14,
+      marginTop: 4
+    }
+  }))), /*#__PURE__*/React.createElement("input", {
+    value: note,
+    onChange: e => setNote(e.target.value),
+    placeholder: "Note (area, how it felt...)",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 14,
+      marginBottom: 16
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: submit,
+    disabled: !type,
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.coral,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15,
+      opacity: type ? 1 : 0.5
     }
   }, "Save"));
 }
