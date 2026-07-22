@@ -1071,7 +1071,10 @@ function Dashboard({
       }).limit(30), sb.from("visits").select("*").eq("member_id", activeMemberId).order("date", {
         ascending: false
       })]);
-      setDay(entryRow ? entryRow.data : emptyDayData());
+      setDay(entryRow ? {
+        ...emptyDayData(),
+        ...entryRow.data
+      } : emptyDayData());
       setGoals(goalRows || []);
       setWeekEntries(weekRows || []);
       setPastEntries((pastRows || []).filter(r => r.date !== todayStr()));
@@ -2518,7 +2521,7 @@ function Dashboard({
       fontSize: 13,
       fontWeight: 700
     }
-  }, "+ Log")), day.remedies.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "+ Log")), (day.remedies || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 16,
@@ -2538,7 +2541,7 @@ function Dashboard({
       flexDirection: "column",
       gap: 8
     }
-  }, day.remedies.slice().reverse().map(r => /*#__PURE__*/React.createElement("div", {
+  }, (day.remedies || []).slice().reverse().map(r => /*#__PURE__*/React.createElement("div", {
     key: r.id,
     style: {
       background: PALETTE.paper,
@@ -2578,7 +2581,7 @@ function Dashboard({
   }, r.note)), /*#__PURE__*/React.createElement("button", {
     onClick: () => setDay({
       ...day,
-      remedies: day.remedies.filter(x => x.id !== r.id)
+      remedies: (day.remedies || []).filter(x => x.id !== r.id)
     }),
     style: {
       background: "none",
