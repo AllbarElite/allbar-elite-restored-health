@@ -30,6 +30,12 @@
   button { cursor: pointer; font-family: inherit; color: inherit; }
   ::-webkit-scrollbar { width: 8px; }
   ::-webkit-scrollbar-thumb { background: #D9D2C2; border-radius: 4px; }
+  @media print {
+    body * { visibility: hidden; }
+    .report-print-area, .report-print-area * { visibility: visible; }
+    .report-print-area { position: absolute; top: 0; left: 0; width: 100%; max-height: none !important; box-shadow: none !important; }
+    .no-print { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -403,6 +409,20 @@ const CYCLE_SYMPTOM_TAGS = [{
   label: "Mood swings",
   emoji: "🌀"
 }];
+function weightTrendFromEntries(pastEntries, currentDay, selectedDate) {
+  const byDate = {};
+  pastEntries.forEach(row => {
+    const logs = row.data?.weightLogs || [];
+    if (logs.length > 0) byDate[row.date] = Number(logs[logs.length - 1].value);
+  });
+  if ((currentDay.weightLogs || []).length > 0) {
+    byDate[selectedDate] = Number(currentDay.weightLogs[currentDay.weightLogs.length - 1].value);
+  }
+  return Object.entries(byDate).map(([date, value]) => ({
+    date,
+    value
+  })).filter(p => !isNaN(p.value)).sort((a, b) => a.date < b.date ? -1 : 1);
+}
 function computeCycleInfo(pastEntries, todayEntry, todayDate) {
   const allDays = [...pastEntries.map(r => ({
     date: r.date,
@@ -1129,6 +1149,70 @@ function DatePickerCalendar({
     }
   }, "Back to Today")));
 }
+function WeightChart({
+  points,
+  onSelectDate,
+  selectedDate
+}) {
+  const width = 320,
+    height = 140,
+    padX = 10,
+    padY = 16;
+  const values = points.map(p => p.value);
+  const min = Math.min(...values),
+    max = Math.max(...values);
+  const range = max - min || 1;
+  const yFor = v => padY + (1 - (v - min + (range === 1 && min === max ? 0.5 : 0)) / (range || 1)) * (height - padY * 2);
+  const xFor = i => padX + (points.length > 1 ? i / (points.length - 1) * (width - padX * 2) : (width - padX * 2) / 2);
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(i)} ${yFor(p.value)}`).join(" ");
+  const areaPath = `${linePath} L ${xFor(points.length - 1)} ${height - padY} L ${xFor(0)} ${height - padY} Z`;
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    style: {
+      width: "100%",
+      height: "auto"
+    }
+  }, /*#__PURE__*/React.createElement("path", {
+    d: areaPath,
+    fill: PALETTE.sageDeep,
+    opacity: "0.12"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: linePath,
+    fill: "none",
+    stroke: PALETTE.sageDeep,
+    strokeWidth: "2.5",
+    strokeLinejoin: "round",
+    strokeLinecap: "round"
+  }), points.map((p, i) => /*#__PURE__*/React.createElement("circle", {
+    key: p.date,
+    cx: xFor(i),
+    cy: yFor(p.value),
+    r: p.date === selectedDate ? 6 : 4,
+    fill: p.date === selectedDate ? PALETTE.gold : PALETTE.sageDeep,
+    stroke: PALETTE.paper,
+    strokeWidth: "1.5",
+    style: {
+      cursor: "pointer"
+    },
+    onClick: () => onSelectDate(p.date)
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      fontSize: 10,
+      color: PALETTE.muted,
+      marginTop: 2
+    }
+  }, /*#__PURE__*/React.createElement("span", null, fmtDate(points[0].date)), /*#__PURE__*/React.createElement("span", null, fmtDate(points[points.length - 1].date))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted,
+      marginTop: 8,
+      marginBottom: 0,
+      textAlign: "center"
+    }
+  }, "Tap any point to view that day"));
+}
 function CycleCalendar({
   pastEntries,
   todayEntry,
@@ -1269,6 +1353,7 @@ function Dashboard({
   const [showWeight, setShowWeight] = useState(false);
   const [visits, setVisits] = useState([]);
   const [showAddVisit, setShowAddVisit] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [weekEntries, setWeekEntries] = useState([]);
   const [showCheckin, setShowCheckin] = useState(false);
   const [showTemp, setShowTemp] = useState(false);
@@ -3664,7 +3749,23 @@ function Dashboard({
       alignItems: "center",
       gap: 8
     }
-  }, /*#__PURE__*/React.createElement("span", null, "🩺"), " Doctor Visits"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("span", null, "🩺"), " Doctor Visits"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowReport(true),
+    style: {
+      background: PALETTE.gold,
+      color: PALETTE.ink,
+      border: "none",
+      borderRadius: 999,
+      padding: "7px 16px",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "📄 Report"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAddVisit(true),
     style: {
       background: PALETTE.sageDeep,
@@ -3675,7 +3776,7 @@ function Dashboard({
       fontSize: 13,
       fontWeight: 700
     }
-  }, "+ Add visit")), visits.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "+ Add visit"))), visits.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 16,
@@ -3950,6 +4051,15 @@ function Dashboard({
     currentDayHasData: dayLoaded && JSON.stringify(day) !== JSON.stringify(emptyDayData()),
     cycleEnabled: !!activeMember?.enabled_features?.cycle,
     cycleInfo: cycleInfo
+  }), showReport && activeMember && /*#__PURE__*/React.createElement(DoctorReportModal, {
+    onClose: () => setShowReport(false),
+    member: activeMember,
+    pastEntries: pastEntries,
+    day: day,
+    selectedDate: selectedDate,
+    visits: visits,
+    goals: goals,
+    goalOz: goalOz
   }));
 }
 function ModalShell({
@@ -4681,6 +4791,427 @@ function VisitModal({
       fontSize: 15
     }
   }, "Save visit"));
+}
+function DoctorReportModal({
+  onClose,
+  member,
+  pastEntries,
+  day,
+  selectedDate,
+  visits,
+  goals,
+  goalOz
+}) {
+  const [rangeDays, setRangeDays] = useState(14);
+  const [medStats, setMedStats] = useState(null);
+  const [loadingMeds, setLoadingMeds] = useState(false);
+  const cutoff = (() => {
+    const d = new Date(selectedDate + "T00:00:00");
+    d.setDate(d.getDate() - rangeDays + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const rangeRows = [...pastEntries, {
+    date: selectedDate,
+    data: day
+  }].filter(r => r.date >= cutoff && r.date <= selectedDate);
+  const medications = (goals || []).filter(g => g.kind === "medication");
+  useEffect(() => {
+    if (medications.length === 0) {
+      setMedStats([]);
+      return;
+    }
+    setLoadingMeds(true);
+    (async () => {
+      const ids = medications.map(m => m.id);
+      const {
+        data
+      } = await sb.from("goal_logs").select("*").in("goal_id", ids).gte("date", cutoff);
+      const byMed = {};
+      medications.forEach(m => {
+        byMed[m.id] = {
+          name: m.name,
+          dosage: m.dosage,
+          target: m.target_count,
+          taken: 0,
+          expected: m.target_count * rangeDays
+        };
+      });
+      (data || []).forEach(row => {
+        if (row.date > selectedDate) return;
+        if (byMed[row.goal_id]) byMed[row.goal_id].taken += row.count || 0;
+      });
+      setMedStats(Object.values(byMed));
+      setLoadingMeds(false);
+    })();
+  }, [rangeDays, selectedDate]);
+  let wellSum = 0,
+    wellCount = 0,
+    feverDays = 0,
+    waterTotal = 0,
+    massageSessions = 0,
+    workoutMin = 0,
+    sleepHours = 0,
+    sleepCount = 0;
+  const tagCounts = {};
+  const journalEntries = [];
+  const weightPoints = [];
+  rangeRows.forEach(row => {
+    const d = row.data || {};
+    (d.checkins || []).forEach(c => {
+      wellSum += c.wellbeing;
+      wellCount++;
+      (c.tags || []).forEach(t => {
+        tagCounts[t] = (tagCounts[t] || 0) + 1;
+      });
+    });
+    (d.temps || []).forEach(t => {
+      if (Number(t.value) >= 100.4) feverDays++;
+    });
+    waterTotal += beverageOzFromDay(d);
+    (d.remedies || []).forEach(() => {
+      massageSessions++;
+    });
+    workoutMin += Number(d.workoutMinutes) || 0;
+    if (d.sleepHours) {
+      sleepHours += Number(d.sleepHours);
+      sleepCount++;
+    }
+    if (d.journal && d.journal.trim()) journalEntries.push({
+      date: row.date,
+      text: d.journal.trim()
+    });
+    if ((d.weightLogs || []).length > 0) weightPoints.push({
+      date: row.date,
+      value: Number(d.weightLogs[d.weightLogs.length - 1].value)
+    });
+  });
+  weightPoints.sort((a, b) => a.date < b.date ? -1 : 1);
+  const avgWellbeing = wellCount > 0 ? (wellSum / wellCount).toFixed(1) : "—";
+  const avgWaterOz = Math.round(waterTotal / rangeDays);
+  const avgSleep = sleepCount > 0 ? (sleepHours / sleepCount).toFixed(1) : null;
+  const visitsInRange = (visits || []).filter(v => v.date >= cutoff && v.date <= selectedDate);
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(20,30,25,0.55)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 16,
+      zIndex: 70
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "report-print-area",
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 20,
+      padding: 28,
+      maxWidth: 520,
+      width: "100%",
+      maxHeight: "90vh",
+      overflowY: "auto"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "no-print",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 20,
+      margin: 0
+    }
+  }, "Health summary"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: "none",
+      border: "none",
+      fontSize: 20,
+      color: PALETTE.muted
+    }
+  }, "✕")), /*#__PURE__*/React.createElement("div", {
+    className: "no-print",
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 18
+    }
+  }, [7, 14, 30].map(n => /*#__PURE__*/React.createElement("button", {
+    key: n,
+    onClick: () => setRangeDays(n),
+    style: {
+      flex: 1,
+      padding: "8px 0",
+      borderRadius: 10,
+      border: `2px solid ${rangeDays === n ? PALETTE.sageDeep : PALETTE.line}`,
+      background: rangeDays === n ? PALETTE.sageDeep + "22" : "#fff",
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, "Last ", n, " days"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: PALETTE.muted
+    }
+  }, member.name, " · ", fmtDate(cutoff), " – ", fmtDate(selectedDate)), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "2px 0 0",
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "General wellness tracking — not medical advice or a diagnosis.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 10,
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 20,
+      fontWeight: 700,
+      color: PALETTE.sageDeep
+    }
+  }, avgWellbeing), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "avg wellbeing / 10")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 20,
+      fontWeight: 700,
+      color: PALETTE.sky
+    }
+  }, avgWaterOz, " oz"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "avg daily fluids (goal ", goalOz, "oz)")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 20,
+      fontWeight: 700,
+      color: "#B0507E"
+    }
+  }, feverDays), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "day(s) with fever (100.4°F+)")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 20,
+      fontWeight: 700,
+      color: PALETTE.purple
+    }
+  }, workoutMin, " min"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "total workout minutes")), massageSessions > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 20,
+      fontWeight: 700,
+      color: PALETTE.coral
+    }
+  }, massageSessions), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "massage/heat sessions")), avgSleep && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 12,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 20,
+      fontWeight: 700,
+      color: PALETTE.goldDeep
+    }
+  }, avgSleep, " hrs"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, "avg sleep"))), weightPoints.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      margin: "0 0 6px"
+    }
+  }, "Weight"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      margin: 0
+    }
+  }, weightPoints[0].value, " lbs (", fmtDate(weightPoints[0].date), ") → ", weightPoints[weightPoints.length - 1].value, " lbs (", fmtDate(weightPoints[weightPoints.length - 1].date), ")", weightPoints.length > 1 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: weightPoints[weightPoints.length - 1].value === weightPoints[0].value ? PALETTE.muted : PALETTE.sageDeep,
+      fontWeight: 700
+    }
+  }, " ", "(", weightPoints[weightPoints.length - 1].value > weightPoints[0].value ? "+" : "", (weightPoints[weightPoints.length - 1].value - weightPoints[0].value).toFixed(1), " lbs)"))), Object.keys(tagCounts).length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      margin: "0 0 6px"
+    }
+  }, "Symptoms noted"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 6
+    }
+  }, Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).map(([key, count]) => {
+    const tag = SYMPTOM_TAGS.find(t => t.key === key);
+    return /*#__PURE__*/React.createElement("span", {
+      key: key,
+      style: {
+        fontSize: 12,
+        background: PALETTE.cream,
+        borderRadius: 999,
+        padding: "4px 10px"
+      }
+    }, tag?.label || key, " × ", count);
+  }))), medications.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      margin: "0 0 6px"
+    }
+  }, "Medication adherence"), loadingMeds || !medStats ? /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Loading...") : medStats.map(m => /*#__PURE__*/React.createElement("p", {
+    key: m.name,
+    style: {
+      fontSize: 13,
+      margin: "4px 0"
+    }
+  }, m.name, m.dosage ? ` (${m.dosage})` : "", ": ", /*#__PURE__*/React.createElement("b", null, m.taken, " of ", m.expected), " expected doses"))), visitsInRange.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      margin: "0 0 6px"
+    }
+  }, "Doctor visits in this period"), visitsInRange.map(v => /*#__PURE__*/React.createElement("p", {
+    key: v.id,
+    style: {
+      fontSize: 13,
+      margin: "4px 0"
+    }
+  }, fmtDate(v.date), v.doctor_name ? ` — ${v.doctor_name}` : "", v.notes ? `: ${v.notes}` : ""))), journalEntries.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      margin: "0 0 6px"
+    }
+  }, "Journal notes"), journalEntries.map(j => /*#__PURE__*/React.createElement("p", {
+    key: j.date,
+    style: {
+      fontSize: 12,
+      margin: "4px 0",
+      color: PALETTE.muted
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: PALETTE.ink
+    }
+  }, fmtDate(j.date), ":"), " ", j.text))), /*#__PURE__*/React.createElement("button", {
+    className: "no-print",
+    onClick: () => window.print(),
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15,
+      marginTop: 8
+    }
+  }, "Print / Save as PDF")));
 }
 function MemberOnboarding({
   onSave,
