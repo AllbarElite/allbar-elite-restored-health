@@ -509,6 +509,69 @@ function beverageOzFromDay(d) {
   });
   return Math.round(total * 10) / 10;
 }
+function AudioPlayer({
+  audioPath
+}) {
+  const [url, setUrl] = useState(null);
+  const [status, setStatus] = useState("idle"); // idle | loading | ready | error
+
+  const load = async () => {
+    setStatus("loading");
+    try {
+      const {
+        data,
+        error
+      } = await sb.storage.from("voice-notes").createSignedUrl(audioPath, 3600);
+      if (error || !data?.signedUrl) throw error || new Error("No URL returned");
+      setUrl(data.signedUrl);
+      setStatus("ready");
+    } catch (e) {
+      setStatus("error");
+    }
+  };
+  if (!audioPath) return null;
+  if (status === "idle") {
+    return /*#__PURE__*/React.createElement("button", {
+      onClick: load,
+      style: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: PALETTE.sageDeep,
+        background: "none",
+        border: "none",
+        padding: 0,
+        marginTop: 6
+      }
+    }, "▶ Play recording");
+  }
+  if (status === "loading") {
+    return /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 11,
+        color: PALETTE.muted,
+        marginTop: 6
+      }
+    }, "Loading recording...");
+  }
+  if (status === "error") {
+    return /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 11,
+        color: "#B0507E",
+        marginTop: 6
+      }
+    }, "Couldn't load the recording.");
+  }
+  return /*#__PURE__*/React.createElement("audio", {
+    controls: true,
+    src: url,
+    style: {
+      width: "100%",
+      height: 32,
+      marginTop: 6
+    }
+  });
+}
 function AvatarBadge({
   member,
   size = 24,
@@ -3867,7 +3930,9 @@ function Dashboard({
       fontSize: 13,
       color: PALETTE.muted
     }
-  }, v.notes), v.summary && /*#__PURE__*/React.createElement("div", {
+  }, v.notes), /*#__PURE__*/React.createElement(AudioPlayer, {
+    audioPath: v.audio_path
+  }), v.summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.cream,
       borderRadius: 10,
@@ -3991,7 +4056,9 @@ function Dashboard({
       fontSize: 11,
       color: PALETTE.muted
     }
-  }, fmtDate(n.date)), n.summary && /*#__PURE__*/React.createElement("div", {
+  }, fmtDate(n.date)), /*#__PURE__*/React.createElement(AudioPlayer, {
+    audioPath: n.audio_path
+  }), n.summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.cream,
       borderRadius: 10,
