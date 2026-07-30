@@ -537,8 +537,70 @@ function beverageOzFromDay(d) {
   });
   return Math.round(total * 10) / 10;
 }
+function PhotoViewer({
+  photoPath
+}) {
+  const [url, setUrl] = useState(null);
+  const [status, setStatus] = useState("idle");
+  const load = async () => {
+    setStatus("loading");
+    try {
+      const {
+        data,
+        error
+      } = await sb.storage.from("photo-notes").createSignedUrl(photoPath, 3600);
+      if (error || !data?.signedUrl) throw error || new Error("No URL returned");
+      setUrl(data.signedUrl);
+      setStatus("ready");
+    } catch (e) {
+      setStatus("error");
+    }
+  };
+  if (!photoPath) return null;
+  if (status === "idle") {
+    return /*#__PURE__*/React.createElement("button", {
+      onClick: load,
+      style: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: PALETTE.sageDeep,
+        background: "none",
+        border: "none",
+        padding: 0,
+        marginTop: 6
+      }
+    }, "🖼️ View photo");
+  }
+  if (status === "loading") return /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted,
+      marginTop: 6
+    }
+  }, "Loading photo...");
+  if (status === "error") return /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: "#B0507E",
+      marginTop: 6
+    }
+  }, "Couldn't load the photo.");
+  return /*#__PURE__*/React.createElement("img", {
+    src: url,
+    alt: "",
+    style: {
+      width: "100%",
+      borderRadius: 10,
+      marginTop: 6,
+      display: "block"
+    }
+  });
+}
 function AudioPlayer({
-  audioPath
+  audioPath,
+  hasTranscript,
+  onTranscribe,
+  transcribing
 }) {
   const [url, setUrl] = useState(null);
   const [status, setStatus] = useState("idle"); // idle | loading | ready | error
@@ -558,39 +620,30 @@ function AudioPlayer({
     }
   };
   if (!audioPath) return null;
-  if (status === "idle") {
-    return /*#__PURE__*/React.createElement("button", {
-      onClick: load,
-      style: {
-        fontSize: 11,
-        fontWeight: 700,
-        color: PALETTE.sageDeep,
-        background: "none",
-        border: "none",
-        padding: 0,
-        marginTop: 6
-      }
-    }, "▶ Play recording");
-  }
-  if (status === "loading") {
-    return /*#__PURE__*/React.createElement("p", {
-      style: {
-        fontSize: 11,
-        color: PALETTE.muted,
-        marginTop: 6
-      }
-    }, "Loading recording...");
-  }
-  if (status === "error") {
-    return /*#__PURE__*/React.createElement("p", {
-      style: {
-        fontSize: 11,
-        color: "#B0507E",
-        marginTop: 6
-      }
-    }, "Couldn't load the recording.");
-  }
-  return /*#__PURE__*/React.createElement("audio", {
+  return /*#__PURE__*/React.createElement("div", null, status === "idle" && /*#__PURE__*/React.createElement("button", {
+    onClick: load,
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: PALETTE.sageDeep,
+      background: "none",
+      border: "none",
+      padding: 0,
+      marginTop: 6
+    }
+  }, "▶ Play recording"), status === "loading" && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted,
+      marginTop: 6
+    }
+  }, "Loading recording..."), status === "error" && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: "#B0507E",
+      marginTop: 6
+    }
+  }, "Couldn't load the recording."), status === "ready" && /*#__PURE__*/React.createElement("audio", {
     controls: true,
     src: url,
     style: {
@@ -598,12 +651,74 @@ function AudioPlayer({
       height: 32,
       marginTop: 6
     }
-  });
+  }), onTranscribe && !hasTranscript && /*#__PURE__*/React.createElement("button", {
+    onClick: onTranscribe,
+    disabled: transcribing,
+    style: {
+      display: "block",
+      fontSize: 11,
+      fontWeight: 700,
+      color: PALETTE.sageDeep,
+      background: "none",
+      border: "none",
+      padding: 0,
+      marginTop: 6,
+      opacity: transcribing ? 0.6 : 1
+    }
+  }, transcribing ? "Transcribing..." : "🎙️ Transcribe this recording"));
+}
+function CategoryPhotos({
+  photos,
+  category,
+  onDelete
+}) {
+  const matching = photos.filter(p => p.category === category);
+  if (matching.length === 0) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, matching.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.id,
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 14,
+      border: `1px solid ${PALETTE.line}`,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      fontWeight: 700
+    }
+  }, "📷 ", p.title || fmtDate(p.date)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onDelete(p.id),
+    style: {
+      background: "none",
+      border: "none",
+      color: PALETTE.muted,
+      fontSize: 14
+    }
+  }, "✕")), /*#__PURE__*/React.createElement(PhotoViewer, {
+    photoPath: p.photo_path
+  }))));
 }
 function CategoryVoiceNotes({
   notes,
   category,
-  onDelete
+  onDelete,
+  onTranscribe,
+  transcribingIds
 }) {
   const matching = notes.filter(n => n.category === category);
   if (matching.length === 0) return null;
@@ -643,7 +758,10 @@ function CategoryVoiceNotes({
       fontSize: 14
     }
   }, "✕")), /*#__PURE__*/React.createElement(AudioPlayer, {
-    audioPath: n.audio_path
+    audioPath: n.audio_path,
+    hasTranscript: !!n.transcript,
+    transcribing: transcribingIds?.has(n.id),
+    onTranscribe: onTranscribe ? () => onTranscribe(n.id, n.audio_path) : null
   }), n.summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.cream,
@@ -1522,12 +1640,16 @@ function Dashboard({
   const [goalLogs, setGoalLogs] = useState({});
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [confirmDeleteGoalId, setConfirmDeleteGoalId] = useState(null);
+  const [editingGoalId, setEditingGoalId] = useState(null);
   const [showAddMed, setShowAddMed] = useState(false);
   const [showWeight, setShowWeight] = useState(false);
   const [visits, setVisits] = useState([]);
   const [showAddVisit, setShowAddVisit] = useState(false);
   const [voiceNotes, setVoiceNotes] = useState([]);
   const [showAddVoiceNote, setShowAddVoiceNote] = useState(false);
+  const [photos, setPhotos] = useState([]);
+  const [showAddPhoto, setShowAddPhoto] = useState(false);
+  const [transcribingIds, setTranscribingIds] = useState(new Set());
   const [showReport, setShowReport] = useState(false);
   const [weekEntries, setWeekEntries] = useState([]);
   const [showCheckin, setShowCheckin] = useState(false);
@@ -1600,6 +1722,8 @@ function Dashboard({
         data: visitRows
       }, {
         data: noteRows
+      }, {
+        data: photoRows
       }] = await Promise.all([sb.from("entries").select("*").eq("member_id", activeMemberId).eq("date", selectedDate).maybeSingle(), sb.from("goals").select("*").eq("member_id", activeMemberId).order("created_at", {
         ascending: true
       }), sb.from("entries").select("*").eq("member_id", activeMemberId).gte("date", weekAgoStr()).order("date", {
@@ -1609,6 +1733,8 @@ function Dashboard({
       }).limit(30), sb.from("visits").select("*").eq("member_id", activeMemberId).order("date", {
         ascending: false
       }), sb.from("voice_notes").select("*").eq("member_id", activeMemberId).order("created_at", {
+        ascending: false
+      }), sb.from("photo_notes").select("*").eq("member_id", activeMemberId).order("created_at", {
         ascending: false
       })]);
       setDay(entryRow ? {
@@ -1620,6 +1746,7 @@ function Dashboard({
       setPastEntries((pastRows || []).filter(r => r.date !== selectedDate));
       setVisits(visitRows || []);
       setVoiceNotes(noteRows || []);
+      setPhotos(photoRows || []);
       if (goalRows && goalRows.length > 0) {
         const ids = goalRows.map(g => g.id);
         const {
@@ -1867,6 +1994,75 @@ function Dashboard({
     await sb.from("voice_notes").delete().eq("id", id);
     setVoiceNotes(prev => prev.filter(n => n.id !== id));
   };
+  const transcribeSaved = async (table, id, audioPath, applyUpdate) => {
+    setTranscribingIds(prev => new Set(prev).add(id));
+    try {
+      const {
+        data: {
+          session
+        }
+      } = await sb.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-visit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          audioPath
+        })
+      });
+      const data = await res.json();
+      if (!data.error) {
+        await sb.from(table).update({
+          transcript: data.transcript,
+          summary: data.summary
+        }).eq("id", id);
+        applyUpdate(data.transcript, data.summary);
+      }
+    } catch (e) {/* leave untranscribed, user can try again */}
+    setTranscribingIds(prev => {
+      const s = new Set(prev);
+      s.delete(id);
+      return s;
+    });
+  };
+  const transcribeSavedNote = (id, audioPath) => transcribeSaved("voice_notes", id, audioPath, (transcript, summary) => {
+    setVoiceNotes(prev => prev.map(n => n.id === id ? {
+      ...n,
+      transcript,
+      summary
+    } : n));
+  });
+  const transcribeSavedVisit = (id, audioPath) => transcribeSaved("visits", id, audioPath, (transcript, summary) => {
+    setVisits(prev => prev.map(v => v.id === id ? {
+      ...v,
+      transcript,
+      summary
+    } : v));
+  });
+  const addPhoto = async form => {
+    const p = {
+      id: uid("photonote"),
+      member_id: activeMemberId,
+      date: todayStr(),
+      title: form.title || null,
+      category: form.category || "general",
+      custom_category: form.customCategory || null,
+      photo_path: form.photoPath || null
+    };
+    const {
+      error
+    } = await sb.from("photo_notes").insert(p);
+    if (!error) {
+      setPhotos(prev => [p, ...prev]);
+      setShowAddPhoto(false);
+    }
+  };
+  const deletePhoto = async id => {
+    await sb.from("photo_notes").delete().eq("id", id);
+    setPhotos(prev => prev.filter(p => p.id !== id));
+  };
   const incrementGoal = async (goalId, target) => {
     const current = goalLogs[goalId] || 0;
     const next = Math.min(target, current + 1);
@@ -1884,6 +2080,17 @@ function Dashboard({
   const deleteGoal = async goalId => {
     await sb.from("goals").delete().eq("id", goalId);
     setGoals(prev => prev.filter(g => g.id !== goalId));
+  };
+  const updateGoal = async (goalId, updates) => {
+    const {
+      error
+    } = await sb.from("goals").update(updates).eq("id", goalId);
+    if (!error) {
+      setGoals(prev => prev.map(g => g.id === goalId ? {
+        ...g,
+        ...updates
+      } : g));
+    }
   };
   const addCheckin = (wellbeing, tags) => {
     setDay(prev => ({
@@ -2505,9 +2712,32 @@ function Dashboard({
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
-      fontWeight: 600
+      fontWeight: 600,
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4
     }
-  }, fmtTime(c.time), " · ", c.wellbeing, "/10"), c.tags && c.tags.length > 0 && /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: c.time,
+    onChange: e => setDay({
+      ...day,
+      checkins: day.checkins.map(x => x.id === c.id ? {
+        ...x,
+        time: e.target.value
+      } : x)
+    }),
+    style: {
+      border: "none",
+      background: "transparent",
+      fontSize: 13,
+      fontWeight: 600,
+      padding: 0,
+      fontFamily: "inherit",
+      color: "inherit",
+      width: 90
+    }
+  }), "· ", c.wellbeing, "/10"), c.tags && c.tags.length > 0 && /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
       color: PALETTE.muted,
@@ -2682,7 +2912,22 @@ function Dashboard({
         fontSize: 10,
         color: PALETTE.muted
       }
-    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("button", {
+    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 10
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setEditingGoalId(g.id),
+      style: {
+        background: "none",
+        border: "none",
+        color: PALETTE.sageDeep,
+        fontSize: 11,
+        padding: 0,
+        fontWeight: 600
+      }
+    }, "Edit"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setConfirmDeleteGoalId(g.id),
       style: {
         background: "none",
@@ -2691,7 +2936,7 @@ function Dashboard({
         fontSize: 11,
         padding: 0
       }
-    }, "Remove"))));
+    }, "Remove")))));
   })))), weekSummary && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -2794,13 +3039,26 @@ function Dashboard({
       fontWeight: 700,
       color: Number(t.value) >= 100.4 ? PALETTE.coral : PALETTE.ink
     }
-  }, t.value, "°F"), /*#__PURE__*/React.createElement("span", {
+  }, t.value, "°F"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: t.time,
+    onChange: e => setDay({
+      ...day,
+      temps: day.temps.map(x => x.id === t.id ? {
+        ...x,
+        time: e.target.value
+      } : x)
+    }),
     style: {
+      border: "none",
+      background: "transparent",
       fontSize: 12,
       color: PALETTE.muted,
-      flex: 1
+      flex: 1,
+      padding: 0,
+      fontFamily: "inherit"
     }
-  }, fmtTime(t.time)), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("button", {
     onClick: () => removeTemp(t.id),
     style: {
       background: "none",
@@ -2885,13 +3143,27 @@ function Dashboard({
         fontSize: 13,
         fontWeight: 600
       }
-    }, "Type ", s.typeId, " — ", t?.label), /*#__PURE__*/React.createElement("span", {
+    }, "Type ", s.typeId, " — ", t?.label), /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      value: s.time,
+      onChange: e => setDay({
+        ...day,
+        stools: day.stools.map(x => x.id === s.id ? {
+          ...x,
+          time: e.target.value
+        } : x)
+      }),
       style: {
+        border: "none",
+        background: "transparent",
         fontSize: 11,
         color: PALETTE.muted,
-        marginLeft: 6
+        marginLeft: 6,
+        padding: 0,
+        fontFamily: "inherit",
+        width: 84
       }
-    }, fmtTime(s.time)), /*#__PURE__*/React.createElement("span", {
+    }), /*#__PURE__*/React.createElement("span", {
       style: {
         display: "block",
         fontSize: 11,
@@ -2973,12 +3245,27 @@ function Dashboard({
     style: {
       flex: 1
     }
-  }, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: u.time,
+    onChange: e => setDay({
+      ...day,
+      urine: day.urine.map(x => x.id === u.id ? {
+        ...x,
+        time: e.target.value
+      } : x)
+    }),
     style: {
+      border: "none",
+      background: "transparent",
       fontSize: 13,
-      fontWeight: 600
+      fontWeight: 600,
+      padding: 0,
+      fontFamily: "inherit",
+      color: "inherit",
+      width: 90
     }
-  }, fmtTime(u.time)), /*#__PURE__*/React.createElement("span", {
+  }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
       color: PALETTE.muted,
@@ -3054,7 +3341,13 @@ function Dashboard({
   }, "A little foam from a fast stream is normal. Foam that's frequent and doesn't go away is worth mentioning to a doctor.")))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "digestive",
-    onDelete: deleteVoiceNote
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "digestive",
+    onDelete: deletePhoto
   })), activeMember?.enabled_features?.meals !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -3120,7 +3413,13 @@ function Dashboard({
   }), "🌙 No dinner today")), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "meals",
-    onDelete: deleteVoiceNote
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "meals",
+    onDelete: deletePhoto
   })), activeMember?.enabled_features?.remedies !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -3206,9 +3505,50 @@ function Dashboard({
     style: {
       margin: 0,
       fontSize: 11,
-      color: PALETTE.muted
+      color: PALETTE.muted,
+      display: "flex",
+      alignItems: "center",
+      gap: 4
     }
-  }, fmtTime(r.startTime), r.endTime ? ` – ${fmtTime(r.endTime)} (${minutesBetween(r.startTime, r.endTime)} min)` : ""), r.note && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: r.startTime || "",
+    onChange: e => setDay({
+      ...day,
+      remedies: day.remedies.map(x => x.id === r.id ? {
+        ...x,
+        startTime: e.target.value
+      } : x)
+    }),
+    style: {
+      border: "none",
+      background: "transparent",
+      fontSize: 11,
+      color: PALETTE.muted,
+      padding: 0,
+      fontFamily: "inherit",
+      width: 78
+    }
+  }), r.endTime !== undefined && /*#__PURE__*/React.createElement(React.Fragment, null, "–", /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: r.endTime || "",
+    onChange: e => setDay({
+      ...day,
+      remedies: day.remedies.map(x => x.id === r.id ? {
+        ...x,
+        endTime: e.target.value
+      } : x)
+    }),
+    style: {
+      border: "none",
+      background: "transparent",
+      fontSize: 11,
+      color: PALETTE.muted,
+      padding: 0,
+      fontFamily: "inherit",
+      width: 78
+    }
+  }), r.startTime && r.endTime ? ` (${minutesBetween(r.startTime, r.endTime)} min)` : "")), r.note && /*#__PURE__*/React.createElement("p", {
     style: {
       margin: "2px 0 0",
       fontSize: 11,
@@ -3228,7 +3568,13 @@ function Dashboard({
   }, "✕")))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "remedies",
-    onDelete: deleteVoiceNote
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "remedies",
+    onDelete: deletePhoto
   })), activeMember?.enabled_features?.workout !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -3289,7 +3635,13 @@ function Dashboard({
   })), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "workout",
-    onDelete: deleteVoiceNote
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "workout",
+    onDelete: deletePhoto
   })), activeMember?.enabled_features?.medications && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -3457,7 +3809,22 @@ function Dashboard({
         fontSize: 10,
         color: PALETTE.muted
       }
-    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("button", {
+    }, "Tap the circle to log a dose"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 10
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setEditingGoalId(m.id),
+      style: {
+        background: "none",
+        border: "none",
+        color: PALETTE.sageDeep,
+        fontSize: 11,
+        padding: 0,
+        fontWeight: 600
+      }
+    }, "Edit"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setConfirmDeleteGoalId(m.id),
       style: {
         background: "none",
@@ -3466,7 +3833,7 @@ function Dashboard({
         fontSize: 11,
         padding: 0
       }
-    }, "Remove"))));
+    }, "Remove")))));
   })))), activeMember?.enabled_features?.sleep && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -3571,7 +3938,13 @@ function Dashboard({
   }, ["😫", "😕", "😐", "🙂", "😌"][q - 1])))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "sleep",
-    onDelete: deleteVoiceNote
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "sleep",
+    onDelete: deletePhoto
   })), activeMember?.enabled_features?.weight && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -3629,13 +4002,26 @@ function Dashboard({
       fontSize: 15,
       fontWeight: 700
     }
-  }, w.value, " lbs"), /*#__PURE__*/React.createElement("span", {
+  }, w.value, " lbs"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: w.time,
+    onChange: e => setDay(prev => ({
+      ...prev,
+      weightLogs: prev.weightLogs.map(x => x.id === w.id ? {
+        ...x,
+        time: e.target.value
+      } : x)
+    })),
     style: {
+      border: "none",
+      background: "transparent",
       fontSize: 12,
       color: PALETTE.muted,
-      flex: 1
+      flex: 1,
+      padding: 0,
+      fontFamily: "inherit"
     }
-  }, fmtTime(w.time)), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("button", {
     onClick: () => setDay(prev => ({
       ...prev,
       weightLogs: prev.weightLogs.filter(x => x.id !== w.id)
@@ -3649,7 +4035,13 @@ function Dashboard({
   }, "✕")))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "weight",
-    onDelete: deleteVoiceNote
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "weight",
+    onDelete: deletePhoto
   })), activeMember?.enabled_features?.cycle && (() => {
     const cycleInfo = computeCycleInfo(pastEntries, day, todayStr());
     return /*#__PURE__*/React.createElement("section", {
@@ -4062,7 +4454,10 @@ function Dashboard({
       color: PALETTE.muted
     }
   }, v.notes), /*#__PURE__*/React.createElement(AudioPlayer, {
-    audioPath: v.audio_path
+    audioPath: v.audio_path,
+    hasTranscript: !!v.transcript,
+    transcribing: transcribingIds.has(v.id),
+    onTranscribe: v.audio_path ? () => transcribeSavedVisit(v.id, v.audio_path) : null
   }), v.summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.cream,
@@ -4104,7 +4499,13 @@ function Dashboard({
   }, v.transcript)))))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "visits",
-    onDelete: deleteVoiceNote
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "visits",
+    onDelete: deletePhoto
   })), activeMember?.enabled_features?.voiceNotes !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
@@ -4192,7 +4593,10 @@ function Dashboard({
       color: PALETTE.muted
     }
   }, fmtDate(n.date), n.category === "other" && n.custom_category ? ` · ${n.custom_category}` : ""), /*#__PURE__*/React.createElement(AudioPlayer, {
-    audioPath: n.audio_path
+    audioPath: n.audio_path,
+    hasTranscript: !!n.transcript,
+    transcribing: transcribingIds.has(n.id),
+    onTranscribe: n.audio_path ? () => transcribeSavedNote(n.id, n.audio_path) : null
   }), n.summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.cream,
@@ -4224,7 +4628,95 @@ function Dashboard({
       marginTop: 6,
       whiteSpace: "pre-wrap"
     }
-  }, n.transcript))))))), pastEntries.length > 0 && /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", {
+  }, n.transcript))))))), activeMember?.enabled_features?.voiceNotes !== false && /*#__PURE__*/React.createElement("section", {
+    style: {
+      marginBottom: 28
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 18,
+      fontWeight: 600,
+      margin: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "📷"), " Photos"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowAddPhoto(true),
+    style: {
+      background: PALETTE.coral,
+      color: "#fff",
+      border: "none",
+      borderRadius: 999,
+      padding: "7px 16px",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, "+ Photo")), photos.filter(p => p.category === "general" || p.category === "other" || !p.category).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 16,
+      border: `1px dashed ${PALETTE.line}`,
+      padding: 20,
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: PALETTE.muted
+    }
+  }, "Document anything worth keeping a picture of — kept completely private. Photos tagged to a specific section (like Weight or Bowel & Urine) show up there instead.")) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, photos.filter(p => p.category === "general" || p.category === "other" || !p.category).map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.id,
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 14,
+      border: `1px solid ${PALETTE.line}`,
+      padding: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }, p.title || fmtDate(p.date)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => deletePhoto(p.id),
+    style: {
+      background: "none",
+      border: "none",
+      color: PALETTE.muted,
+      fontSize: 15
+    }
+  }, "✕")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "2px 0 0",
+      fontSize: 11,
+      color: PALETTE.muted
+    }
+  }, fmtDate(p.date), p.category === "other" && p.custom_category ? ` · ${p.custom_category}` : ""), /*#__PURE__*/React.createElement(PhotoViewer, {
+    photoPath: p.photo_path
+  }))))), pastEntries.length > 0 && /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 18,
@@ -4412,12 +4904,33 @@ function Dashboard({
   }), showUrine && /*#__PURE__*/React.createElement(UrineModal, {
     onClose: () => setShowUrine(false),
     onSave: addUrine
-  }), showAddGoal && /*#__PURE__*/React.createElement(GoalModal, {
-    onClose: () => setShowAddGoal(false),
-    onSave: addGoal
-  }), showAddMed && /*#__PURE__*/React.createElement(MedModal, {
-    onClose: () => setShowAddMed(false),
-    onSave: addGoal
+  }), (showAddGoal || editingGoalId && goals.find(g => g.id === editingGoalId)?.kind !== "medication") && /*#__PURE__*/React.createElement(GoalModal, {
+    onClose: () => {
+      setShowAddGoal(false);
+      setEditingGoalId(null);
+    },
+    onSave: editingGoalId ? (name, target) => {
+      updateGoal(editingGoalId, {
+        name,
+        target_count: target
+      });
+      setEditingGoalId(null);
+    } : addGoal,
+    editingGoal: editingGoalId ? goals.find(g => g.id === editingGoalId) : null
+  }), (showAddMed || editingGoalId && goals.find(g => g.id === editingGoalId)?.kind === "medication") && /*#__PURE__*/React.createElement(MedModal, {
+    onClose: () => {
+      setShowAddMed(false);
+      setEditingGoalId(null);
+    },
+    onSave: editingGoalId ? (name, target, kind, dosage) => {
+      updateGoal(editingGoalId, {
+        name,
+        target_count: target,
+        dosage
+      });
+      setEditingGoalId(null);
+    } : addGoal,
+    editingGoal: editingGoalId ? goals.find(g => g.id === editingGoalId) : null
   }), showWeight && /*#__PURE__*/React.createElement(WeightModal, {
     onClose: () => setShowWeight(false),
     onSave: addWeight
@@ -4428,6 +4941,10 @@ function Dashboard({
   }), showAddVoiceNote && /*#__PURE__*/React.createElement(VoiceNoteModal, {
     onClose: () => setShowAddVoiceNote(false),
     onSave: addVoiceNote,
+    authUser: authUser
+  }), showAddPhoto && /*#__PURE__*/React.createElement(PhotoModal, {
+    onClose: () => setShowAddPhoto(false),
+    onSave: addPhoto,
     authUser: authUser
   }), showEditProfile && activeMember && /*#__PURE__*/React.createElement(EditProfileModal, {
     member: activeMember,
@@ -4949,10 +5466,11 @@ function UrineModal({
 }
 function GoalModal({
   onClose,
-  onSave
+  onSave,
+  editingGoal
 }) {
-  const [name, setName] = useState("");
-  const [target, setTarget] = useState(2);
+  const [name, setName] = useState(editingGoal?.name || "");
+  const [target, setTarget] = useState(editingGoal?.target_count || 2);
   return /*#__PURE__*/React.createElement(ModalShell, {
     onClose: onClose
   }, /*#__PURE__*/React.createElement("h3", {
@@ -4961,7 +5479,7 @@ function GoalModal({
       fontSize: 20,
       marginTop: 0
     }
-  }, "New daily goal"), /*#__PURE__*/React.createElement("input", {
+  }, editingGoal ? "Edit goal" : "New daily goal"), /*#__PURE__*/React.createElement("input", {
     value: name,
     onChange: e => setName(e.target.value),
     placeholder: "e.g. Drops, Vitamins, Stretches",
@@ -5003,15 +5521,16 @@ function GoalModal({
       fontWeight: 700,
       fontSize: 15
     }
-  }, "Add goal"));
+  }, editingGoal ? "Save changes" : "Add goal"));
 }
 function MedModal({
   onClose,
-  onSave
+  onSave,
+  editingGoal
 }) {
-  const [name, setName] = useState("");
-  const [dosage, setDosage] = useState("");
-  const [target, setTarget] = useState(2);
+  const [name, setName] = useState(editingGoal?.name || "");
+  const [dosage, setDosage] = useState(editingGoal?.dosage || "");
+  const [target, setTarget] = useState(editingGoal?.target_count || 2);
   return /*#__PURE__*/React.createElement(ModalShell, {
     onClose: onClose
   }, /*#__PURE__*/React.createElement("h3", {
@@ -5020,7 +5539,7 @@ function MedModal({
       fontSize: 20,
       marginTop: 0
     }
-  }, "New medication or vitamin"), /*#__PURE__*/React.createElement("input", {
+  }, editingGoal ? "Edit medication or vitamin" : "New medication or vitamin"), /*#__PURE__*/React.createElement("input", {
     value: name,
     onChange: e => setName(e.target.value),
     placeholder: "e.g. Drops, Vitamin D",
@@ -5074,7 +5593,7 @@ function MedModal({
       fontWeight: 700,
       fontSize: 15
     }
-  }, "Add"));
+  }, editingGoal ? "Save changes" : "Add"));
 }
 function WeightModal({
   onClose,
@@ -5119,6 +5638,202 @@ function WeightModal({
     }
   }, "Save"));
 }
+function PhotoModal({
+  onClose,
+  onSave,
+  authUser
+}) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("general");
+  const [customCategory, setCustomCategory] = useState("");
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [status, setStatus] = useState("idle"); // idle | uploading | error
+  const [error, setError] = useState("");
+  const [photoPath, setPhotoPath] = useState(null);
+  const handleFile = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setFile(f);
+    setPreviewUrl(URL.createObjectURL(f));
+  };
+  const upload = async () => {
+    if (!file) return;
+    setStatus("uploading");
+    setError("");
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${authUser.id}/${uid("photo")}.${ext}`;
+      const {
+        error: upErr
+      } = await sb.storage.from("photo-notes").upload(path, file);
+      if (upErr) throw upErr;
+      setPhotoPath(path);
+      setStatus("idle");
+    } catch (e) {
+      setError(e.message || "Something went wrong uploading the photo.");
+      setStatus("error");
+    }
+  };
+  return /*#__PURE__*/React.createElement(ModalShell, {
+    onClose: onClose
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "display",
+    style: {
+      fontSize: 20,
+      marginTop: 0
+    }
+  }, "New photo"), /*#__PURE__*/React.createElement("input", {
+    value: title,
+    onChange: e => setTitle(e.target.value),
+    placeholder: "Title (optional) — e.g. Rash on arm",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      margin: "14px 0 10px"
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Where should this show up?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 6,
+      margin: "6px 0 10px"
+    }
+  }, VOICE_NOTE_CATEGORIES.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c.key,
+    onClick: () => setCategory(c.key),
+    style: {
+      padding: "6px 12px",
+      borderRadius: 999,
+      border: `1.5px solid ${category === c.key ? PALETTE.sageDeep : PALETTE.line}`,
+      background: category === c.key ? PALETTE.sageDeep + "22" : "#fff",
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, c.label))), category === "other" && /*#__PURE__*/React.createElement("input", {
+    value: customCategory,
+    onChange: e => setCustomCategory(e.target.value),
+    placeholder: "What's this about? — e.g. Rash",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      marginBottom: 10
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 16
+    }
+  }, !previewUrl ? /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "block",
+      width: "100%",
+      padding: 14,
+      borderRadius: 12,
+      border: "none",
+      background: PALETTE.coral,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15,
+      textAlign: "center",
+      cursor: "pointer"
+    }
+  }, "📷 Take or choose a photo", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: "image/*",
+    capture: "environment",
+    onChange: handleFile,
+    style: {
+      display: "none"
+    }
+  })) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("img", {
+    src: previewUrl,
+    alt: "",
+    style: {
+      width: "100%",
+      borderRadius: 10,
+      marginBottom: 10,
+      display: "block"
+    }
+  }), status === "error" && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#B0507E",
+      marginBottom: 8
+    }
+  }, error), photoPath ? /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: PALETTE.sageDeep,
+      margin: 0
+    }
+  }, "✓ Photo saved") : /*#__PURE__*/React.createElement("button", {
+    onClick: upload,
+    disabled: status === "uploading",
+    style: {
+      width: "100%",
+      padding: 10,
+      borderRadius: 12,
+      border: "none",
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 13,
+      marginBottom: 8,
+      opacity: status === "uploading" ? 0.6 : 1
+    }
+  }, status === "uploading" ? "Saving..." : "Save this photo"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setFile(null);
+      setPreviewUrl(null);
+      setPhotoPath(null);
+      setStatus("idle");
+    },
+    style: {
+      width: "100%",
+      padding: 10,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      background: "none",
+      fontWeight: 600,
+      fontSize: 12,
+      color: "#B0507E"
+    }
+  }, "Discard & choose another"))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSave({
+      title: title.trim() || null,
+      category,
+      customCategory: customCategory.trim() || null,
+      photoPath
+    }),
+    disabled: !photoPath,
+    style: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 14,
+      border: "none",
+      background: PALETTE.sageDeep,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 15,
+      opacity: photoPath ? 1 : 0.5
+    }
+  }, "Save note"));
+}
 function VoiceNoteModal({
   onClose,
   onSave,
@@ -5152,7 +5867,7 @@ function VoiceNoteModal({
           type: "audio/webm"
         });
         setLocalPreviewUrl(URL.createObjectURL(blob));
-        await uploadAndTranscribe(blob);
+        await uploadOnly(blob);
       };
       recorder.start();
       mediaRecorderRef.current = recorder;
@@ -5177,7 +5892,7 @@ function VoiceNoteModal({
     setTranscript("");
     setSummary("");
   };
-  const uploadAndTranscribe = async blob => {
+  const uploadOnly = async blob => {
     setRecState("uploading");
     try {
       const path = `${authUser.id}/${uid("note")}.webm`;
@@ -5186,7 +5901,15 @@ function VoiceNoteModal({
       } = await sb.storage.from("voice-notes").upload(path, blob);
       if (upErr) throw upErr;
       setAudioPath(path);
-      setRecState("transcribing");
+      setRecState("recorded");
+    } catch (e) {
+      setRecError(e.message || "Something went wrong saving the recording.");
+      setRecState("error");
+    }
+  };
+  const transcribeNow = async () => {
+    setRecState("transcribing");
+    try {
       const {
         data: {
           session
@@ -5199,17 +5922,17 @@ function VoiceNoteModal({
           Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
-          audioPath: path
+          audioPath
         })
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setTranscript(data.transcript || "");
       setSummary(data.summary || "");
-      setRecState("done");
+      setRecState("recorded");
     } catch (e) {
-      setRecError(e.message || "Something went wrong processing the recording.");
-      setRecState("error");
+      setRecError(e.message || "Something went wrong transcribing.");
+      setRecState("recorded");
     }
   };
   return /*#__PURE__*/React.createElement(ModalShell, {
@@ -5298,14 +6021,14 @@ function VoiceNoteModal({
       fontWeight: 700,
       fontSize: 15
     }
-  }, "⏹ Stop recording"), (recState === "uploading" || recState === "transcribing") && /*#__PURE__*/React.createElement("p", {
+  }, "⏹ Stop recording"), recState === "uploading" && /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       color: PALETTE.muted,
       textAlign: "center",
       margin: 0
     }
-  }, recState === "uploading" ? "Saving recording..." : "Transcribing... this can take a minute."), recState === "error" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+  }, "Saving recording..."), recState === "error" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       color: "#B0507E",
@@ -5322,14 +6045,14 @@ function VoiceNoteModal({
       fontWeight: 600,
       fontSize: 13
     }
-  }, "Try again")), recState === "done" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+  }, "Try again")), (recState === "recorded" || recState === "transcribing") && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       fontWeight: 700,
       color: PALETTE.sageDeep,
       marginBottom: 6
     }
-  }, "✓ Transcribed"), localPreviewUrl && /*#__PURE__*/React.createElement("audio", {
+  }, "✓ Recording saved"), localPreviewUrl && /*#__PURE__*/React.createElement("audio", {
     controls: true,
     src: localPreviewUrl,
     style: {
@@ -5337,7 +6060,28 @@ function VoiceNoteModal({
       height: 32,
       marginBottom: 10
     }
-  }), summary && /*#__PURE__*/React.createElement("div", {
+  }), recError && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#B0507E",
+      marginBottom: 8
+    }
+  }, recError), !transcript && /*#__PURE__*/React.createElement("button", {
+    onClick: transcribeNow,
+    disabled: recState === "transcribing",
+    style: {
+      width: "100%",
+      padding: 10,
+      borderRadius: 12,
+      border: `1.5px solid ${PALETTE.sageDeep}`,
+      background: "none",
+      fontWeight: 700,
+      fontSize: 13,
+      color: PALETTE.sageDeep,
+      marginBottom: 8,
+      opacity: recState === "transcribing" ? 0.6 : 1
+    }
+  }, recState === "transcribing" ? "Transcribing... this can take a minute" : "🎙️ Transcribe this recording"), summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 10,
@@ -5357,7 +6101,7 @@ function VoiceNoteModal({
       fontSize: 12,
       whiteSpace: "pre-wrap"
     }
-  }, summary)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
+  }, summary)), transcript && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
     style: {
       fontSize: 12,
       color: PALETTE.sageDeep,
@@ -5393,7 +6137,7 @@ function VoiceNoteModal({
       transcript: transcript || null,
       summary: summary || null
     }),
-    disabled: recState !== "done",
+    disabled: recState !== "recorded" && recState !== "transcribing",
     style: {
       width: "100%",
       padding: 14,
@@ -5403,7 +6147,7 @@ function VoiceNoteModal({
       color: "#fff",
       fontWeight: 700,
       fontSize: 15,
-      opacity: recState === "done" ? 1 : 0.5
+      opacity: recState === "recorded" || recState === "transcribing" ? 1 : 0.5
     }
   }, "Save note"));
 }
@@ -5415,9 +6159,10 @@ function VisitModal({
   const [date, setDate] = useState(todayStr());
   const [doctorName, setDoctorName] = useState("");
   const [notes, setNotes] = useState("");
-  const [recState, setRecState] = useState("idle"); // idle | recording | uploading | transcribing | done | error
+  const [recState, setRecState] = useState("idle"); // idle | recording | uploading | recorded | transcribing | error
   const [recError, setRecError] = useState("");
   const [audioPath, setAudioPath] = useState(null);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
   const [transcript, setTranscript] = useState("");
   const [summary, setSummary] = useState("");
   const mediaRecorderRef = useRef(null);
@@ -5438,7 +6183,8 @@ function VisitModal({
         const blob = new Blob(chunksRef.current, {
           type: "audio/webm"
         });
-        await uploadAndTranscribe(blob);
+        setLocalPreviewUrl(URL.createObjectURL(blob));
+        await uploadOnly(blob);
       };
       recorder.start();
       mediaRecorderRef.current = recorder;
@@ -5451,7 +6197,19 @@ function VisitModal({
   const stopRecording = () => {
     if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
   };
-  const uploadAndTranscribe = async blob => {
+  const discardAndReset = async () => {
+    if (audioPath) {
+      try {
+        await sb.storage.from("voice-notes").remove([audioPath]);
+      } catch (e) {/* best effort */}
+    }
+    setRecState("idle");
+    setAudioPath(null);
+    setLocalPreviewUrl(null);
+    setTranscript("");
+    setSummary("");
+  };
+  const uploadOnly = async blob => {
     setRecState("uploading");
     try {
       const path = `${authUser.id}/${uid("visit")}.webm`;
@@ -5460,7 +6218,15 @@ function VisitModal({
       } = await sb.storage.from("voice-notes").upload(path, blob);
       if (upErr) throw upErr;
       setAudioPath(path);
-      setRecState("transcribing");
+      setRecState("recorded");
+    } catch (e) {
+      setRecError(e.message || "Something went wrong saving the recording.");
+      setRecState("error");
+    }
+  };
+  const transcribeNow = async () => {
+    setRecState("transcribing");
+    try {
       const {
         data: {
           session
@@ -5473,17 +6239,17 @@ function VisitModal({
           Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
-          audioPath: path
+          audioPath
         })
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setTranscript(data.transcript || "");
       setSummary(data.summary || "");
-      setRecState("done");
+      setRecState("recorded");
     } catch (e) {
-      setRecError(e.message || "Something went wrong processing the recording.");
-      setRecState("error");
+      setRecError(e.message || "Something went wrong transcribing.");
+      setRecState("recorded");
     }
   };
   return /*#__PURE__*/React.createElement(ModalShell, {
@@ -5570,14 +6336,14 @@ function VisitModal({
       fontWeight: 700,
       fontSize: 14
     }
-  }, "⏹ Stop recording"), (recState === "uploading" || recState === "transcribing") && /*#__PURE__*/React.createElement("p", {
+  }, "⏹ Stop recording"), recState === "uploading" && /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       color: PALETTE.muted,
       textAlign: "center",
       margin: 0
     }
-  }, recState === "uploading" ? "Saving recording..." : "Transcribing... this can take a minute."), recState === "error" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+  }, "Saving recording..."), recState === "error" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       color: "#B0507E",
@@ -5594,14 +6360,43 @@ function VisitModal({
       fontWeight: 600,
       fontSize: 13
     }
-  }, "Try again")), recState === "done" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+  }, "Try again")), (recState === "recorded" || recState === "transcribing") && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       fontWeight: 700,
       color: PALETTE.sageDeep,
       marginBottom: 6
     }
-  }, "✓ Transcribed"), summary && /*#__PURE__*/React.createElement("div", {
+  }, "✓ Recording saved"), localPreviewUrl && /*#__PURE__*/React.createElement("audio", {
+    controls: true,
+    src: localPreviewUrl,
+    style: {
+      width: "100%",
+      height: 32,
+      marginBottom: 10
+    }
+  }), recError && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#B0507E",
+      marginBottom: 8
+    }
+  }, recError), !transcript && /*#__PURE__*/React.createElement("button", {
+    onClick: transcribeNow,
+    disabled: recState === "transcribing",
+    style: {
+      width: "100%",
+      padding: 10,
+      borderRadius: 12,
+      border: `1.5px solid ${PALETTE.sageDeep}`,
+      background: "none",
+      fontWeight: 700,
+      fontSize: 13,
+      color: PALETTE.sageDeep,
+      marginBottom: 8,
+      opacity: recState === "transcribing" ? 0.6 : 1
+    }
+  }, recState === "transcribing" ? "Transcribing... this can take a minute" : "🎙️ Transcribe this recording"), summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#fff",
       borderRadius: 10,
@@ -5621,7 +6416,7 @@ function VisitModal({
       fontSize: 12,
       whiteSpace: "pre-wrap"
     }
-  }, summary)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
+  }, summary)), transcript && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
     style: {
       fontSize: 12,
       color: PALETTE.sageDeep,
@@ -5635,7 +6430,20 @@ function VisitModal({
       marginTop: 8,
       whiteSpace: "pre-wrap"
     }
-  }, transcript)))), /*#__PURE__*/React.createElement("button", {
+  }, transcript)), /*#__PURE__*/React.createElement("button", {
+    onClick: discardAndReset,
+    style: {
+      width: "100%",
+      padding: 10,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      background: "none",
+      fontWeight: 600,
+      fontSize: 12,
+      color: "#B0507E",
+      marginTop: 10
+    }
+  }, "Discard & try again"))), /*#__PURE__*/React.createElement("button", {
     onClick: () => onSave({
       date,
       doctorName: doctorName.trim() || null,
@@ -5644,7 +6452,7 @@ function VisitModal({
       transcript: transcript || null,
       summary: summary || null
     }),
-    disabled: recState === "recording" || recState === "uploading" || recState === "transcribing",
+    disabled: recState === "recording" || recState === "uploading",
     style: {
       width: "100%",
       padding: 14,
@@ -5654,7 +6462,7 @@ function VisitModal({
       color: "#fff",
       fontWeight: 700,
       fontSize: 15,
-      opacity: recState === "recording" || recState === "uploading" || recState === "transcribing" ? 0.5 : 1
+      opacity: recState === "recording" || recState === "uploading" ? 0.5 : 1
     }
   }, "Save visit"));
 }
