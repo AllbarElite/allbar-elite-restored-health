@@ -172,6 +172,34 @@ const MEMBER_COLORS = ["#0E8C74", "#E8A33D", "#E36A50", "#3D8FBF", "#8B5FB0", "#
 const AVATAR_EMOJIS = ["🌸", "🌻", "🦄", "🐶", "🐱", "🦁", "🐘", "🐻", "❤️", "💜", "⭐", "🌈", "🌙", "👑", "🤴", "🤴🏻", "🤴🏽", "🤴🏿", "👸", "👸🏻", "👸🏽", "👸🏿"];
 const BEVERAGE_OPTIONS = ["Tea", "Water", "Juice", "Other"];
 const REMEDY_TYPES = ["Hand massage", "Heat pack", "Vibrating heat pack", "Foot massage", "Other"];
+const VOICE_NOTE_CATEGORIES = [{
+  key: "general",
+  label: "General"
+}, {
+  key: "digestive",
+  label: "Bowel & Urine"
+}, {
+  key: "sleep",
+  label: "Sleep"
+}, {
+  key: "weight",
+  label: "Weight"
+}, {
+  key: "remedies",
+  label: "Massage & Heat"
+}, {
+  key: "workout",
+  label: "Workout"
+}, {
+  key: "meals",
+  label: "Meals & Drinks"
+}, {
+  key: "visits",
+  label: "Doctor Visit"
+}, {
+  key: "other",
+  label: "Other"
+}];
 const SYMPTOM_TAGS = [{
   key: "nausea",
   label: "Nausea",
@@ -571,6 +599,83 @@ function AudioPlayer({
       marginTop: 6
     }
   });
+}
+function CategoryVoiceNotes({
+  notes,
+  category,
+  onDelete
+}) {
+  const matching = notes.filter(n => n.category === category);
+  if (matching.length === 0) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, matching.map(n => /*#__PURE__*/React.createElement("div", {
+    key: n.id,
+    style: {
+      background: PALETTE.paper,
+      borderRadius: 14,
+      border: `1px solid ${PALETTE.line}`,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      fontWeight: 700
+    }
+  }, "🎙️ ", n.title || fmtDate(n.date)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onDelete(n.id),
+    style: {
+      background: "none",
+      border: "none",
+      color: PALETTE.muted,
+      fontSize: 14
+    }
+  }, "✕")), /*#__PURE__*/React.createElement(AudioPlayer, {
+    audioPath: n.audio_path
+  }), n.summary && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: PALETTE.cream,
+      borderRadius: 10,
+      padding: 10,
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      whiteSpace: "pre-wrap"
+    }
+  }, n.summary), n.transcript && /*#__PURE__*/React.createElement("details", {
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.sageDeep,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, "View full transcript"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: PALETTE.muted,
+      marginTop: 6,
+      whiteSpace: "pre-wrap"
+    }
+  }, n.transcript))))));
 }
 function AvatarBadge({
   member,
@@ -1744,6 +1849,8 @@ function Dashboard({
       member_id: activeMemberId,
       date: todayStr(),
       title: form.title || null,
+      category: form.category || "general",
+      custom_category: form.customCategory || null,
       audio_path: form.audioPath || null,
       transcript: form.transcript || null,
       summary: form.summary || null
@@ -2944,7 +3051,11 @@ function Dashboard({
       color: PALETTE.muted,
       marginTop: 6
     }
-  }, "A little foam from a fast stream is normal. Foam that's frequent and doesn't go away is worth mentioning to a doctor."))))), activeMember?.enabled_features?.meals !== false && /*#__PURE__*/React.createElement("section", {
+  }, "A little foam from a fast stream is normal. Foam that's frequent and doesn't go away is worth mentioning to a doctor.")))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "digestive",
+    onDelete: deleteVoiceNote
+  })), activeMember?.enabled_features?.meals !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3006,7 +3117,11 @@ function Dashboard({
       ...day,
       skippedDinner: e.target.checked
     })
-  }), "🌙 No dinner today"))), activeMember?.enabled_features?.remedies !== false && /*#__PURE__*/React.createElement("section", {
+  }), "🌙 No dinner today")), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "meals",
+    onDelete: deleteVoiceNote
+  })), activeMember?.enabled_features?.remedies !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3110,7 +3225,11 @@ function Dashboard({
       color: PALETTE.muted,
       fontSize: 15
     }
-  }, "✕"))))), activeMember?.enabled_features?.workout !== false && /*#__PURE__*/React.createElement("section", {
+  }, "✕")))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "remedies",
+    onDelete: deleteVoiceNote
+  })), activeMember?.enabled_features?.workout !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3167,7 +3286,11 @@ function Dashboard({
       padding: 8,
       fontSize: 14
     }
-  }))), activeMember?.enabled_features?.medications && /*#__PURE__*/React.createElement("section", {
+  })), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "workout",
+    onDelete: deleteVoiceNote
+  })), activeMember?.enabled_features?.medications && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3445,7 +3568,11 @@ function Dashboard({
       background: day.sleepQuality === q ? PALETTE.sageDeep + "22" : "#fff",
       fontSize: 18
     }
-  }, ["😫", "😕", "😐", "🙂", "😌"][q - 1]))))), activeMember?.enabled_features?.weight && /*#__PURE__*/React.createElement("section", {
+  }, ["😫", "😕", "😐", "🙂", "😌"][q - 1])))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "sleep",
+    onDelete: deleteVoiceNote
+  })), activeMember?.enabled_features?.weight && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3519,7 +3646,11 @@ function Dashboard({
       color: PALETTE.muted,
       fontSize: 16
     }
-  }, "✕"))))), activeMember?.enabled_features?.cycle && (() => {
+  }, "✕")))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "weight",
+    onDelete: deleteVoiceNote
+  })), activeMember?.enabled_features?.cycle && (() => {
     const cycleInfo = computeCycleInfo(pastEntries, day, todayStr());
     return /*#__PURE__*/React.createElement("section", {
       style: {
@@ -3970,7 +4101,11 @@ function Dashboard({
       marginTop: 6,
       whiteSpace: "pre-wrap"
     }
-  }, v.transcript))))))), activeMember?.enabled_features?.voiceNotes !== false && /*#__PURE__*/React.createElement("section", {
+  }, v.transcript)))))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "visits",
+    onDelete: deleteVoiceNote
+  })), activeMember?.enabled_features?.voiceNotes !== false && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -4002,7 +4137,7 @@ function Dashboard({
       fontSize: 13,
       fontWeight: 700
     }
-  }, "+ Record")), voiceNotes.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "+ Record")), voiceNotes.filter(n => n.category === "general" || n.category === "other" || !n.category).length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 16,
@@ -4016,13 +4151,13 @@ function Dashboard({
       fontSize: 13,
       color: PALETTE.muted
     }
-  }, "Record any note — a pharmacist call, a reminder to yourself, anything — and get an automatic transcript and summary.")) : /*#__PURE__*/React.createElement("div", {
+  }, "Record any note — a pharmacist call, a reminder to yourself, anything — and get an automatic transcript and summary. Notes tagged to a specific section (like Weight or Sleep) show up there instead.")) : /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexDirection: "column",
       gap: 8
     }
-  }, voiceNotes.map(n => /*#__PURE__*/React.createElement("div", {
+  }, voiceNotes.filter(n => n.category === "general" || n.category === "other" || !n.category).map(n => /*#__PURE__*/React.createElement("div", {
     key: n.id,
     style: {
       background: PALETTE.paper,
@@ -4056,7 +4191,7 @@ function Dashboard({
       fontSize: 11,
       color: PALETTE.muted
     }
-  }, fmtDate(n.date)), /*#__PURE__*/React.createElement(AudioPlayer, {
+  }, fmtDate(n.date), n.category === "other" && n.custom_category ? ` · ${n.custom_category}` : ""), /*#__PURE__*/React.createElement(AudioPlayer, {
     audioPath: n.audio_path
   }), n.summary && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4990,9 +5125,12 @@ function VoiceNoteModal({
   authUser
 }) {
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("general");
+  const [customCategory, setCustomCategory] = useState("");
   const [recState, setRecState] = useState("idle");
   const [recError, setRecError] = useState("");
   const [audioPath, setAudioPath] = useState(null);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
   const [transcript, setTranscript] = useState("");
   const [summary, setSummary] = useState("");
   const mediaRecorderRef = useRef(null);
@@ -5013,6 +5151,7 @@ function VoiceNoteModal({
         const blob = new Blob(chunksRef.current, {
           type: "audio/webm"
         });
+        setLocalPreviewUrl(URL.createObjectURL(blob));
         await uploadAndTranscribe(blob);
       };
       recorder.start();
@@ -5025,6 +5164,18 @@ function VoiceNoteModal({
   };
   const stopRecording = () => {
     if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+  };
+  const discardAndReset = async () => {
+    if (audioPath) {
+      try {
+        await sb.storage.from("voice-notes").remove([audioPath]);
+      } catch (e) {/* best effort */}
+    }
+    setRecState("idle");
+    setAudioPath(null);
+    setLocalPreviewUrl(null);
+    setTranscript("");
+    setSummary("");
   };
   const uploadAndTranscribe = async blob => {
     setRecState("uploading");
@@ -5079,7 +5230,42 @@ function VoiceNoteModal({
       borderRadius: 12,
       border: `1px solid ${PALETTE.line}`,
       fontSize: 15,
-      margin: "14px 0 14px"
+      margin: "14px 0 10px"
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: PALETTE.muted
+    }
+  }, "Where should this show up?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 6,
+      margin: "6px 0 10px"
+    }
+  }, VOICE_NOTE_CATEGORIES.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c.key,
+    onClick: () => setCategory(c.key),
+    style: {
+      padding: "6px 12px",
+      borderRadius: 999,
+      border: `1.5px solid ${category === c.key ? PALETTE.sageDeep : PALETTE.line}`,
+      background: category === c.key ? PALETTE.sageDeep + "22" : "#fff",
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, c.label))), category === "other" && /*#__PURE__*/React.createElement("input", {
+    value: customCategory,
+    onChange: e => setCustomCategory(e.target.value),
+    placeholder: "What's this about? — e.g. Rash",
+    style: {
+      width: "100%",
+      padding: 12,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      fontSize: 15,
+      marginBottom: 10
     }
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5143,7 +5329,15 @@ function VoiceNoteModal({
       color: PALETTE.sageDeep,
       marginBottom: 6
     }
-  }, "✓ Transcribed"), summary && /*#__PURE__*/React.createElement("div", {
+  }, "✓ Transcribed"), localPreviewUrl && /*#__PURE__*/React.createElement("audio", {
+    controls: true,
+    src: localPreviewUrl,
+    style: {
+      width: "100%",
+      height: 32,
+      marginBottom: 10
+    }
+  }), summary && /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 10,
@@ -5177,9 +5371,24 @@ function VoiceNoteModal({
       marginTop: 8,
       whiteSpace: "pre-wrap"
     }
-  }, transcript)))), /*#__PURE__*/React.createElement("button", {
+  }, transcript)), /*#__PURE__*/React.createElement("button", {
+    onClick: discardAndReset,
+    style: {
+      width: "100%",
+      padding: 10,
+      borderRadius: 12,
+      border: `1px solid ${PALETTE.line}`,
+      background: "none",
+      fontWeight: 600,
+      fontSize: 12,
+      color: "#B0507E",
+      marginTop: 10
+    }
+  }, "Discard & try again"))), /*#__PURE__*/React.createElement("button", {
     onClick: () => onSave({
       title: title.trim() || null,
+      category,
+      customCategory: customCategory.trim() || null,
       audioPath,
       transcript: transcript || null,
       summary: summary || null
