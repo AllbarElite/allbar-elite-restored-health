@@ -61,6 +61,7 @@
   }, 8000);
 </script>
 <script>
+
 const {
   useState,
   useEffect,
@@ -191,8 +192,11 @@ const VOICE_NOTE_CATEGORIES = [{
   key: "workout",
   label: "Workout"
 }, {
+  key: "drinks",
+  label: "Drinks"
+}, {
   key: "meals",
-  label: "Meals & Drinks"
+  label: "Meals"
 }, {
   key: "visits",
   label: "Doctor Visit"
@@ -356,16 +360,17 @@ const BRISTOL_GROUP_COLORS = {
 const URINE_SHADES = ["#F5F3E7", "#F2EBC3", "#EEE29B", "#E8D274", "#DEBD4F", "#CFA23A", "#B8812B", "#8F5A1E"];
 const URINE_MEANINGS = ["Pale/clear — well hydrated", "Very light — well hydrated", "Pale yellow — good hydration", "Yellow — normal", "Deeper yellow — could drink a bit more", "Amber — a sign you're dehydrated", "Dark amber/orange — drink water soon", "Dark/tea-colored — worth mentioning to a doctor if it stays this way"];
 const DEFAULT_FEATURES = {
-  meals: true,
-  remedies: true,
-  workout: true,
+  meals: false,
+  drinks: false,
+  remedies: false,
+  workout: false,
   digestive: false,
   medications: false,
   sleep: false,
   weight: false,
   cycle: false,
   visits: false,
-  voiceNotes: true
+  voiceNotes: false
 };
 const DEFAULT_REMINDER_PREFS = {
   water: true,
@@ -376,9 +381,13 @@ const DEFAULT_REMINDER_PREFS = {
   followupMinutes: 10
 };
 const FEATURE_LIST = [{
+  key: "drinks",
+  label: "Drinks",
+  detail: "Track water, tea, and other fluids by time of day"
+}, {
   key: "meals",
-  label: "Meals & Drinks",
-  detail: "Track meals and fluids by time of day"
+  label: "Meals",
+  detail: "Track what was eaten by time of day"
 }, {
   key: "remedies",
   label: "Massage & Heat",
@@ -1072,7 +1081,8 @@ function MealDrinkRow({
   mealKey,
   label,
   day,
-  setDay
+  setDay,
+  showMealField = true
 }) {
   const [type, setType] = useState("");
   const [customLabel, setCustomLabel] = useState("");
@@ -1109,7 +1119,7 @@ function MealDrinkRow({
       borderRadius: 12,
       padding: 12
     }
-  }, /*#__PURE__*/React.createElement("input", {
+  }, showMealField ? /*#__PURE__*/React.createElement("input", {
     placeholder: label,
     value: day[mealKey],
     onChange: e => setDay({
@@ -1126,7 +1136,16 @@ function MealDrinkRow({
       marginBottom: 8,
       outline: "none"
     }
-  }), drinks.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }) : /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 8px",
+      fontSize: 12,
+      fontWeight: 700,
+      color: PALETTE.muted,
+      textTransform: "uppercase",
+      letterSpacing: "0.05em"
+    }
+  }, label), drinks.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexDirection: "column",
@@ -3348,7 +3367,7 @@ function Dashboard({
     photos: photos,
     category: "digestive",
     onDelete: deletePhoto
-  })), activeMember?.enabled_features?.meals !== false && /*#__PURE__*/React.createElement("section", {
+  })), (activeMember?.enabled_features?.meals || activeMember?.enabled_features?.drinks) && /*#__PURE__*/React.createElement("section", {
     style: {
       marginBottom: 28
     }
@@ -3366,7 +3385,7 @@ function Dashboard({
     style: {
       color: "#E8A33D"
     }
-  }, "☀️"), " Meals & Drinks"), /*#__PURE__*/React.createElement("div", {
+  }, "☀️"), " ", activeMember?.enabled_features?.meals && activeMember?.enabled_features?.drinks ? "Meals & Drinks" : activeMember?.enabled_features?.meals ? "Meals" : "Drinks"), /*#__PURE__*/React.createElement("div", {
     style: {
       background: PALETTE.paper,
       borderRadius: 16,
@@ -3390,13 +3409,15 @@ function Dashboard({
     mealKey: m.key,
     label: m.label,
     day: day,
-    setDay: setDay
-  })), !day.skippedDinner && /*#__PURE__*/React.createElement(MealDrinkRow, {
+    setDay: setDay,
+    showMealField: !!activeMember?.enabled_features?.meals
+  })), (!activeMember?.enabled_features?.meals || !day.skippedDinner) && /*#__PURE__*/React.createElement(MealDrinkRow, {
     mealKey: "dinner",
     label: "Dinner",
     day: day,
-    setDay: setDay
-  }), /*#__PURE__*/React.createElement("label", {
+    setDay: setDay,
+    showMealField: !!activeMember?.enabled_features?.meals
+  }), activeMember?.enabled_features?.meals && /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -3410,15 +3431,25 @@ function Dashboard({
       ...day,
       skippedDinner: e.target.checked
     })
-  }), "🌙 No dinner today")), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+  }), "🌙 No dinner today")), activeMember?.enabled_features?.meals && /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
     notes: voiceNotes,
     category: "meals",
     onDelete: deleteVoiceNote,
     onTranscribe: transcribeSavedNote,
     transcribingIds: transcribingIds
-  }), /*#__PURE__*/React.createElement(CategoryPhotos, {
+  }), activeMember?.enabled_features?.meals && /*#__PURE__*/React.createElement(CategoryPhotos, {
     photos: photos,
     category: "meals",
+    onDelete: deletePhoto
+  }), activeMember?.enabled_features?.drinks && /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
+    notes: voiceNotes,
+    category: "drinks",
+    onDelete: deleteVoiceNote,
+    onTranscribe: transcribeSavedNote,
+    transcribingIds: transcribingIds
+  }), activeMember?.enabled_features?.drinks && /*#__PURE__*/React.createElement(CategoryPhotos, {
+    photos: photos,
+    category: "drinks",
     onDelete: deletePhoto
   })), activeMember?.enabled_features?.remedies !== false && /*#__PURE__*/React.createElement("section", {
     style: {
@@ -8384,6 +8415,7 @@ function App() {
   });
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
+
 </script>
 </body>
 </html>
