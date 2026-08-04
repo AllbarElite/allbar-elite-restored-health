@@ -373,10 +373,10 @@ const DEFAULT_FEATURES = {
   voiceNotes: false
 };
 const DEFAULT_REMINDER_PREFS = {
-  water: true,
-  medications: true,
-  workout: true,
-  remedies: true,
+  water: false,
+  medications: false,
+  workout: false,
+  remedies: false,
   followupEnabled: true,
   followupMinutes: 10
 };
@@ -878,7 +878,7 @@ function Toggle({
       height: 18,
       width: 18,
       borderRadius: "50%",
-      background: "#fff",
+      background: PALETTE.paper,
       boxShadow: "0 1px 3px rgba(0,0,0,.3)",
       transition: "left .15s"
     }
@@ -2410,7 +2410,7 @@ function Dashboard({
         borderRadius: 999,
         border: "none",
         background: active ? "#fff" : "rgba(255,255,255,0.14)",
-        color: active ? PALETTE.ink : "#fff",
+        color: active ? PALETTE.ink : PALETTE.paper,
         boxShadow: active ? "0 2px 10px rgba(0,0,0,0.18)" : "none",
         fontWeight: 600,
         fontSize: 14
@@ -2444,44 +2444,47 @@ function Dashboard({
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowEditProfile(true),
     style: {
-      background: "none",
-      border: "none",
-      color: "rgba(255,255,255,0.7)",
+      background: "rgba(255,255,255,0.18)",
+      border: "1px solid rgba(255,255,255,0.4)",
+      borderRadius: 999,
+      color: "#fff",
       fontSize: 12,
-      padding: 0,
-      textDecoration: "underline"
+      fontWeight: 700,
+      padding: "6px 12px"
     }
   }, "Edit profile"), /*#__PURE__*/React.createElement("button", {
     onClick: onLogout,
     style: {
-      background: "none",
-      border: "none",
-      color: "rgba(255,255,255,0.7)",
+      background: "rgba(255,255,255,0.18)",
+      border: "1px solid rgba(255,255,255,0.4)",
+      borderRadius: 999,
+      color: "#fff",
       fontSize: 12,
-      padding: 0,
-      textDecoration: "underline"
+      fontWeight: 700,
+      padding: "6px 12px"
     }
   }, "Log out"), /*#__PURE__*/React.createElement("button", {
     onClick: subscribeToNotifications,
     disabled: notifStatus === "subscribing",
     style: {
-      background: "none",
-      border: "none",
-      color: notifStatus === "subscribed" ? PALETTE.gold : "rgba(255,255,255,0.7)",
+      background: notifStatus === "subscribed" ? PALETTE.gold : "rgba(255,255,255,0.18)",
+      border: `1px solid ${notifStatus === "subscribed" ? PALETTE.gold : "rgba(255,255,255,0.4)"}`,
+      borderRadius: 999,
+      color: notifStatus === "subscribed" ? PALETTE.ink : "#fff",
       fontSize: 12,
-      padding: 0,
-      textDecoration: "underline",
-      fontWeight: notifStatus === "subscribed" ? 700 : 400
+      fontWeight: 700,
+      padding: "6px 12px"
     }
   }, notifStatus === "subscribed" ? "✓ Water reminders on" : notifStatus === "subscribing" ? "Turning on..." : "Turn on water reminders"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setDarkMode(!darkMode),
     style: {
-      background: "none",
-      border: "none",
-      color: "rgba(255,255,255,0.7)",
+      background: "rgba(255,255,255,0.18)",
+      border: "1px solid rgba(255,255,255,0.4)",
+      borderRadius: 999,
+      color: "#fff",
       fontSize: 12,
-      padding: 0,
-      textDecoration: "underline"
+      fontWeight: 700,
+      padding: "6px 12px"
     }
   }, darkMode ? "☀️ Light mode" : "🌙 Dark mode")), notifStatus === "error" && /*#__PURE__*/React.createElement("p", {
     style: {
@@ -2747,8 +2750,9 @@ function Dashboard({
       } : x)
     }),
     style: {
-      border: "none",
-      background: "transparent",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 6,
+      background: PALETTE.paper,
       fontSize: 13,
       fontWeight: 600,
       padding: 0,
@@ -3069,8 +3073,9 @@ function Dashboard({
       } : x)
     }),
     style: {
-      border: "none",
-      background: "transparent",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 6,
+      background: PALETTE.paper,
       fontSize: 12,
       color: PALETTE.muted,
       flex: 1,
@@ -3173,12 +3178,13 @@ function Dashboard({
         } : x)
       }),
       style: {
-        border: "none",
-        background: "transparent",
+        border: `1px solid ${PALETTE.line}`,
+        borderRadius: 6,
+        background: PALETTE.paper,
         fontSize: 11,
         color: PALETTE.muted,
         marginLeft: 6,
-        padding: 0,
+        padding: "2px 6px",
         fontFamily: "inherit",
         width: 84
       }
@@ -3275,8 +3281,9 @@ function Dashboard({
       } : x)
     }),
     style: {
-      border: "none",
-      background: "transparent",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 6,
+      background: PALETTE.paper,
       fontSize: 13,
       fontWeight: 600,
       padding: 0,
@@ -3552,8 +3559,9 @@ function Dashboard({
       } : x)
     }),
     style: {
-      border: "none",
-      background: "transparent",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 6,
+      background: PALETTE.paper,
       fontSize: 11,
       color: PALETTE.muted,
       padding: 0,
@@ -3571,8 +3579,9 @@ function Dashboard({
       } : x)
     }),
     style: {
-      border: "none",
-      background: "transparent",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 6,
+      background: PALETTE.paper,
       fontSize: 11,
       color: PALETTE.muted,
       padding: 0,
@@ -3963,7 +3972,7 @@ function Dashboard({
       padding: "10px 0",
       borderRadius: 10,
       border: `2px solid ${day.sleepQuality === q ? PALETTE.sageDeep : PALETTE.line}`,
-      background: day.sleepQuality === q ? PALETTE.sageDeep + "22" : "#fff",
+      background: day.sleepQuality === q ? PALETTE.sageDeep + "22" : PALETTE.paper,
       fontSize: 18
     }
   }, ["😫", "😕", "😐", "🙂", "😌"][q - 1])))), /*#__PURE__*/React.createElement(CategoryVoiceNotes, {
@@ -4044,8 +4053,9 @@ function Dashboard({
       } : x)
     })),
     style: {
-      border: "none",
-      background: "transparent",
+      border: `1px solid ${PALETTE.line}`,
+      borderRadius: 6,
+      background: PALETTE.paper,
       fontSize: 12,
       color: PALETTE.muted,
       flex: 1,
@@ -4150,7 +4160,7 @@ function Dashboard({
         padding: "8px 0",
         borderRadius: 10,
         border: `2px solid ${day.periodStatus === s ? "#D4547A" : PALETTE.line}`,
-        background: day.periodStatus === s ? "#D4547A22" : "#fff",
+        background: day.periodStatus === s ? "#D4547A22" : PALETTE.paper,
         fontSize: 13,
         fontWeight: 600,
         textTransform: "capitalize"
@@ -4172,7 +4182,7 @@ function Dashboard({
         padding: "8px 0",
         borderRadius: 10,
         border: `2px solid ${day.periodFlow === f ? "#D4547A" : PALETTE.line}`,
-        background: day.periodFlow === f ? "#D4547A22" : "#fff",
+        background: day.periodFlow === f ? "#D4547A22" : PALETTE.paper,
         fontSize: 13,
         fontWeight: 600
       }
@@ -4200,7 +4210,7 @@ function Dashboard({
           padding: "7px 12px",
           borderRadius: 999,
           border: `1.5px solid ${on ? "#D4547A" : PALETTE.line}`,
-          background: on ? "#D4547A22" : "#fff",
+          background: on ? "#D4547A22" : PALETTE.paper,
           fontSize: 12,
           fontWeight: 600
         }
@@ -4227,7 +4237,7 @@ function Dashboard({
         padding: "8px 0",
         borderRadius: 10,
         border: `2px solid ${day.ovulationTest === r ? PALETTE.gold : PALETTE.line}`,
-        background: day.ovulationTest === r ? PALETTE.gold + "33" : "#fff",
+        background: day.ovulationTest === r ? PALETTE.gold + "33" : PALETTE.paper,
         fontSize: 13,
         fontWeight: 600,
         textTransform: "capitalize"
@@ -5106,7 +5116,7 @@ function CheckinModal({
       padding: "8px 14px",
       borderRadius: 999,
       border: `1.5px solid ${tags.includes(t.key) ? PALETTE.coral : PALETTE.line}`,
-      background: tags.includes(t.key) ? PALETTE.coral + "22" : "#fff",
+      background: tags.includes(t.key) ? PALETTE.coral + "22" : PALETTE.paper,
       fontSize: 13,
       fontWeight: 600
     }
@@ -5203,7 +5213,7 @@ function StoolModal({
       padding: 12,
       borderRadius: 12,
       border: `2px solid ${typeId === t.id ? t.color : PALETTE.line}`,
-      background: typeId === t.id ? t.color + "22" : "#fff",
+      background: typeId === t.id ? t.color + "22" : PALETTE.paper,
       textAlign: "left"
     }
   }, /*#__PURE__*/React.createElement(BristolIcon, {
@@ -5310,7 +5320,7 @@ function RemedyModal({
       padding: 12,
       borderRadius: 12,
       border: `2px solid ${type === t ? PALETTE.coral : PALETTE.line}`,
-      background: type === t ? PALETTE.coral + "22" : "#fff",
+      background: type === t ? PALETTE.coral + "22" : PALETTE.paper,
       textAlign: "left"
     }
   }, /*#__PURE__*/React.createElement("span", {
@@ -5745,7 +5755,7 @@ function PhotoModal({
       padding: "6px 12px",
       borderRadius: 999,
       border: `1.5px solid ${category === c.key ? PALETTE.sageDeep : PALETTE.line}`,
-      background: category === c.key ? PALETTE.sageDeep + "22" : "#fff",
+      background: category === c.key ? PALETTE.sageDeep + "22" : PALETTE.paper,
       fontSize: 12,
       fontWeight: 600
     }
@@ -6005,7 +6015,7 @@ function VoiceNoteModal({
       padding: "6px 12px",
       borderRadius: 999,
       border: `1.5px solid ${category === c.key ? PALETTE.sageDeep : PALETTE.line}`,
-      background: category === c.key ? PALETTE.sageDeep + "22" : "#fff",
+      background: category === c.key ? PALETTE.sageDeep + "22" : PALETTE.paper,
       fontSize: 12,
       fontWeight: 600
     }
@@ -6387,7 +6397,7 @@ function VisitModal({
       padding: 10,
       borderRadius: 12,
       border: `1px solid ${PALETTE.line}`,
-      background: "#fff",
+      background: PALETTE.paper,
       fontWeight: 600,
       fontSize: 13
     }
@@ -6429,7 +6439,7 @@ function VisitModal({
     }
   }, recState === "transcribing" ? "Transcribing... this can take a minute" : "🎙️ Transcribe this recording"), summary && /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#fff",
+      background: PALETTE.paper,
       borderRadius: 10,
       padding: 10,
       marginBottom: 8
@@ -6656,7 +6666,7 @@ function DoctorReportModal({
       padding: "8px 0",
       borderRadius: 10,
       border: `2px solid ${rangeDays === n ? PALETTE.sageDeep : PALETTE.line}`,
-      background: rangeDays === n ? PALETTE.sageDeep + "22" : "#fff",
+      background: rangeDays === n ? PALETTE.sageDeep + "22" : PALETTE.paper,
       fontSize: 13,
       fontWeight: 600
     }
@@ -6938,6 +6948,9 @@ function MemberOnboarding({
   const [features, setFeatures] = useState({
     ...DEFAULT_FEATURES
   });
+  const [reminderPrefs, setReminderPrefs] = useState({
+    ...DEFAULT_REMINDER_PREFS
+  });
   const steps = ["name", "age-weight-height", "schedule", "photo-color", "features"];
   const canNext = step === 0 ? name.trim().length > 0 : true;
   const handlePhoto = e => {
@@ -7083,20 +7096,50 @@ function MemberOnboarding({
       fontSize: 12,
       color: PALETTE.muted
     }
-  }, "Height (inches)"), /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    value: height,
-    onChange: e => setHeight(e.target.value),
-    placeholder: "Height in inches",
-    style: {
-      width: "100%",
-      padding: 12,
-      borderRadius: 12,
-      border: `1px solid ${PALETTE.line}`,
-      fontSize: 15,
-      margin: "4px 0"
-    }
-  })), step === 2 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
+  }, "Height (inches)"), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, margin: "4px 0" }
+  }, /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+    /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      min: "0",
+      value: height ? Math.floor(Number(height) / 12) : "",
+      onChange: e => {
+        const ft = Number(e.target.value) || 0;
+        const inch = height ? Number(height) % 12 : 0;
+        setHeight(String(ft * 12 + inch));
+      },
+      placeholder: "Feet",
+      style: {
+        width: "100%",
+        padding: 12,
+        borderRadius: 12,
+        border: `1px solid ${PALETTE.line}`,
+        fontSize: 15
+      }
+    }),
+    /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: PALETTE.muted } }, "ft")
+  ), /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+    /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      min: "0",
+      max: "11",
+      value: height ? Number(height) % 12 : "",
+      onChange: e => {
+        const inch = Math.min(11, Number(e.target.value) || 0);
+        const ft = height ? Math.floor(Number(height) / 12) : 0;
+        setHeight(String(ft * 12 + inch));
+      },
+      placeholder: "Inches",
+      style: {
+        width: "100%",
+        padding: 12,
+        borderRadius: 12,
+        border: `1px solid ${PALETTE.line}`,
+        fontSize: 15
+      }
+    }),
+    /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: PALETTE.muted } }, "in")
+  ))), step === 2 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 22,
@@ -7231,7 +7274,7 @@ function MemberOnboarding({
       padding: 6,
       borderRadius: 10,
       border: `2px solid ${avatarEmoji === e ? PALETTE.sageDeep : PALETTE.line}`,
-      background: avatarEmoji === e ? PALETTE.sageDeep + "22" : "#fff"
+      background: avatarEmoji === e ? PALETTE.sageDeep + "22" : PALETTE.paper
     }
   }, e)))), step === 4 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
@@ -7286,7 +7329,51 @@ function MemberOnboarding({
       ...prev,
       [f.key]: !prev[f.key]
     }))
-  }))))), error && step === 4 && /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 13, fontWeight: 700, margin: "20px 0 8px" }
+  }, "Reminders"), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 11, color: PALETTE.muted, marginBottom: 8 }
+  }, "Only matters for sections turned on above — pick what you actually want to be reminded about."),
+  /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", flexDirection: "column", gap: 8 }
+  }, [
+    { key: "water", label: "Water reminders" },
+    { key: "medications", label: "Medication/vitamin reminders" },
+    { key: "workout", label: "Workout reminders" },
+    { key: "remedies", label: "Massage & heat reminders" }
+  ].map(r => /*#__PURE__*/React.createElement("div", {
+    key: r.key,
+    style: {
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      background: PALETTE.cream, borderRadius: 12, padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: { margin: 0, fontSize: 13, fontWeight: 600 }
+  }, r.label), /*#__PURE__*/React.createElement(Toggle, {
+    on: reminderPrefs[r.key] !== false,
+    onClick: () => setReminderPrefs(prev => ({ ...prev, [r.key]: prev[r.key] === false ? true : false }))
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: { background: PALETTE.cream, borderRadius: 12, padding: 12 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", justifyContent: "space-between" }
+  }, /*#__PURE__*/React.createElement("div", { style: { paddingRight: 12 } },
+    /*#__PURE__*/React.createElement("p", { style: { margin: 0, fontSize: 13, fontWeight: 600 } }, "Follow-up if not done"),
+    /*#__PURE__*/React.createElement("p", { style: { margin: "2px 0 0", fontSize: 11, color: PALETTE.muted } }, "One gentle nudge, never repeated")
+  ), /*#__PURE__*/React.createElement(Toggle, {
+    on: reminderPrefs.followupEnabled !== false,
+    onClick: () => setReminderPrefs(prev => ({ ...prev, followupEnabled: prev.followupEnabled === false ? true : false }))
+  })), reminderPrefs.followupEnabled !== false && /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 8, marginTop: 10 }
+  }, [5, 10, 15].map(mins => /*#__PURE__*/React.createElement("button", {
+    key: mins,
+    onClick: () => setReminderPrefs(prev => ({ ...prev, followupMinutes: mins })),
+    style: {
+      flex: 1, padding: "8px 0", borderRadius: 10,
+      border: `2px solid ${(reminderPrefs.followupMinutes || 10) === mins ? PALETTE.sageDeep : PALETTE.line}`,
+      background: (reminderPrefs.followupMinutes || 10) === mins ? PALETTE.sageDeep + "22" : PALETTE.paper,
+      fontSize: 13, fontWeight: 600
+    }
+  }, mins, " min"))))))), error && step === 4 && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#FDF0F0",
       border: "1px solid #E8B8B8",
@@ -7352,7 +7439,8 @@ function MemberOnboarding({
       color,
       photoFile,
       avatarEmoji,
-      features
+      features,
+      reminderPrefs
     }),
     style: {
       flex: 2,
@@ -7507,7 +7595,7 @@ function EditProfileModal({
       padding: 6,
       borderRadius: 10,
       border: `2px solid ${avatarEmoji === e ? PALETTE.sageDeep : PALETTE.line}`,
-      background: avatarEmoji === e ? PALETTE.sageDeep + "22" : "#fff"
+      background: avatarEmoji === e ? PALETTE.sageDeep + "22" : PALETTE.paper
     }
   }, e))), /*#__PURE__*/React.createElement("label", {
     style: {
@@ -7577,19 +7665,50 @@ function EditProfileModal({
       fontSize: 12,
       color: PALETTE.muted
     }
-  }, "Height (inches)"), /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    value: height,
-    onChange: e => setHeight(e.target.value),
-    style: {
-      width: "100%",
-      padding: 12,
-      borderRadius: 12,
-      border: `1px solid ${PALETTE.line}`,
-      fontSize: 15,
-      margin: "4px 0 12px"
-    }
-  }), /*#__PURE__*/React.createElement("div", {
+  }, "Height (inches)"), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, margin: "4px 0 12px" }
+  }, /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+    /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      min: "0",
+      value: height ? Math.floor(Number(height) / 12) : "",
+      onChange: e => {
+        const ft = Number(e.target.value) || 0;
+        const inch = height ? Number(height) % 12 : 0;
+        setHeight(String(ft * 12 + inch));
+      },
+      placeholder: "Feet",
+      style: {
+        width: "100%",
+        padding: 12,
+        borderRadius: 12,
+        border: `1px solid ${PALETTE.line}`,
+        fontSize: 15
+      }
+    }),
+    /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: PALETTE.muted } }, "ft")
+  ), /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+    /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      min: "0",
+      max: "11",
+      value: height ? Number(height) % 12 : "",
+      onChange: e => {
+        const inch = Math.min(11, Number(e.target.value) || 0);
+        const ft = height ? Math.floor(Number(height) / 12) : 0;
+        setHeight(String(ft * 12 + inch));
+      },
+      placeholder: "Inches",
+      style: {
+        width: "100%",
+        padding: 12,
+        borderRadius: 12,
+        border: `1px solid ${PALETTE.line}`,
+        fontSize: 15
+      }
+    }),
+    /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: PALETTE.muted } }, "in")
+  )), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 10
@@ -7771,7 +7890,7 @@ function EditProfileModal({
       padding: "8px 0",
       borderRadius: 10,
       border: `2px solid ${(reminderPrefs.followupMinutes || 10) === mins ? PALETTE.sageDeep : PALETTE.line}`,
-      background: (reminderPrefs.followupMinutes || 10) === mins ? PALETTE.sageDeep + "22" : "#fff",
+      background: (reminderPrefs.followupMinutes || 10) === mins ? PALETTE.sageDeep + "22" : PALETTE.paper,
       fontSize: 13,
       fontWeight: 600
     }
