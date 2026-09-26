@@ -8432,6 +8432,8 @@ function AdminDashboard({ onClose }) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteStatus, setInviteStatus] = useState("idle"); // idle | sending | sent | error
   const [inviteError, setInviteError] = useState("");
+  const [rowBusy, setRowBusy] = useState({}); // user_id -> "resending" | "resent" | "resend-error" | "deleting" | "delete-error"
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -8467,6 +8469,43 @@ function AdminDashboard({ onClose }) {
     } catch (e) {
       setInviteError(e.message || "Something went wrong sending the invite.");
       setInviteStatus("error");
+    }
+  };
+
+  const resendInvite = async (u) => {
+    setRowBusy(prev => ({ ...prev, [u.user_id]: "resending" }));
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-invite-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ email: u.email }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setRowBusy(prev => ({ ...prev, [u.user_id]: "resent" }));
+      setTimeout(() => setRowBusy(prev => { const n = { ...prev }; delete n[u.user_id]; return n; }), 4000);
+    } catch (e) {
+      setRowBusy(prev => ({ ...prev, [u.user_id]: "resend-error" }));
+    }
+  };
+
+  const deleteUser = async (u) => {
+    setRowBusy(prev => ({ ...prev, [u.user_id]: "deleting" }));
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-delete-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ user_id: u.user_id }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setConfirmDeleteId(null);
+      setRowBusy(prev => { const n = { ...prev }; delete n[u.user_id]; return n; });
+      setUsers(prev => prev.filter(x => x.user_id !== u.user_id));
+    } catch (e) {
+      setRowBusy(prev => ({ ...prev, [u.user_id]: "delete-error" }));
     }
   };
 
@@ -8546,20 +8585,50 @@ function AdminDashboard({ onClose }) {
     loading ? /*#__PURE__*/React.createElement("p", { style: { color: PALETTE.muted, fontSize: 13 } }, "Loading...") :
     loadError ? /*#__PURE__*/React.createElement("p", { style: { color: "#B0507E", fontSize: 13 } }, loadError) :
     /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
-      filtered.map(u => /*#__PURE__*/React.createElement("div", {
-        key: u.user_id,
-        style: { background: PALETTE.paper, borderRadius: 12, border: `1px solid ${PALETTE.line}`, padding: 12 }
-      },
-        /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-          /*#__PURE__*/React.createElement("p", { style: { margin: 0, fontSize: 13, fontWeight: 700, color: PALETTE.ink } }, u.email),
-          Number(u.member_count) === 0 && /*#__PURE__*/React.createElement("span", {
-            style: { fontSize: 10, fontWeight: 700, background: "#B0507E", color: "#fff", borderRadius: 999, padding: "3px 8px" }
-          }, "No profile yet")
-        ),
-        /*#__PURE__*/React.createElement("p", { style: { margin: "4px 0 0", fontSize: 11, color: PALETTE.muted } },
-          "Joined ", fmtDT(u.created_at), " · Last login: ", fmtDT(u.last_sign_in_at), " · ", u.member_count, " profile", Number(u.member_count) === 1 ? "" : "s"
-        )
-      ))
+      filtered.map(u => {
+        const busy = rowBusy[u.user_id];
+        const confirming = confirmDeleteId === u.user_id;
+        return /*#__PURE__*/React.createElement("div", {
+          key: u.user_id,
+          style: { background: PALETTE.paper, borderRadius: 12, border: `1px solid ${PALETTE.line}`, padding: 12 }
+        },
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+            /*#__PURE__*/React.createElement("p", { style: { margin: 0, fontSize: 13, fontWeight: 700, color: PALETTE.ink } }, u.email),
+            Number(u.member_count) === 0 && /*#__PURE__*/React.createElement("span", {
+              style: { fontSize: 10, fontWeight: 700, background: "#B0507E", color: "#fff", borderRadius: 999, padding: "3px 8px" }
+            }, "No profile yet")
+          ),
+          /*#__PURE__*/React.createElement("p", { style: { margin: "4px 0 0", fontSize: 11, color: PALETTE.muted } },
+            "Joined ", fmtDT(u.created_at), " · Last login: ", fmtDT(u.last_sign_in_at), " · ", u.member_count, " profile", Number(u.member_count) === 1 ? "" : "s"
+          ),
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" } },
+            !confirming && /*#__PURE__*/React.createElement("button", {
+              onClick: () => resendInvite(u),
+              disabled: busy === "resending",
+              style: { background: "none", border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 700, color: PALETTE.sageDeep, opacity: busy === "resending" ? 0.6 : 1 }
+            }, busy === "resending" ? "Resending..." : "Resend invite"),
+            !confirming && /*#__PURE__*/React.createElement("button", {
+              onClick: () => setConfirmDeleteId(u.user_id),
+              style: { background: "none", border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#B0507E" }
+            }, "Delete"),
+            busy === "resent" && /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, fontWeight: 600, color: PALETTE.sageDeep } }, "✓ Invite resent"),
+            busy === "resend-error" && /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: "#B0507E" } }, "Couldn't resend — try again"),
+            confirming && /*#__PURE__*/React.createElement(React.Fragment, null,
+              /*#__PURE__*/React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#B0507E" } }, "Delete this account permanently?"),
+              /*#__PURE__*/React.createElement("button", {
+                onClick: () => deleteUser(u),
+                disabled: busy === "deleting",
+                style: { background: "#B0507E", color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 700, opacity: busy === "deleting" ? 0.6 : 1 }
+              }, busy === "deleting" ? "Deleting..." : "Yes, delete"),
+              /*#__PURE__*/React.createElement("button", {
+                onClick: () => { setConfirmDeleteId(null); setRowBusy(prev => { const n = { ...prev }; delete n[u.user_id]; return n; }); },
+                style: { background: "none", border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 700, color: PALETTE.ink }
+              }, "Cancel")
+            ),
+            busy === "delete-error" && /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: "#B0507E" } }, "Couldn't delete — try again")
+          )
+        );
+      })
     ),
     filtered.length === 0 && !loading && !loadError && /*#__PURE__*/React.createElement("p", { style: { color: PALETTE.muted, fontSize: 13, textAlign: "center" } }, "No matching users.")
   );
