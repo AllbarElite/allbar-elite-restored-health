@@ -36,6 +36,14 @@
     .report-print-area { position: absolute; top: 0; left: 0; width: 100%; max-height: none !important; box-shadow: none !important; }
     .no-print { display: none !important; }
   }
+  @keyframes abeGentlePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(224,166,61,0.55); }
+    50% { box-shadow: 0 0 0 6px rgba(224,166,61,0); }
+  }
+  .abe-pulse { animation: abeGentlePulse 2.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .abe-pulse { animation: none; box-shadow: 0 0 0 2px rgba(224,166,61,0.55); }
+  }
 </style>
 </head>
 <body>
@@ -452,6 +460,56 @@ const CYCLE_SYMPTOM_TAGS = [{
   label: "Mood swings",
   emoji: "🌀"
 }];
+// ---- Daily-history calendar helpers ----
+// Which enabled features count toward a day being "complete". Doctor Visits,
+// Voice Notes, and Photos are excluded on purpose — they aren't daily things.
+// Menstrual Cycle is also excluded — it's only logged on days there's something
+// to report, not every day, so requiring it would mark most days incomplete.
+const CALENDAR_COMPLETION_FEATURES = ["drinks", "meals", "remedies", "workout", "digestive", "medications", "sleep", "weight"];
+
+function guessMealSlot(d) {
+  const dt = d instanceof Date ? d : new Date();
+  const h = dt.getHours();
+  if (h < 11) return "morning";
+  if (h < 15) return "afternoon";
+  if (h < 18) return "snack";
+  return "dinner";
+}
+
+function isCategoryLoggedForDay(featureKey, d, medGoalsForDay) {
+  switch (featureKey) {
+    case "drinks":
+      return beverageOzFromDay(d) > 0;
+    case "meals":
+      return !!(d.morning || d.afternoon || d.snack || d.dinner);
+    case "remedies":
+      return (d.remedies || []).length > 0;
+    case "workout":
+      return !!d.workoutActivity || Number(d.workoutMinutes) > 0;
+    case "digestive":
+      return (d.stools || []).length > 0 || (d.urine || []).length > 0;
+    case "sleep":
+      return !!d.sleepHours;
+    case "weight":
+      return (d.weightLogs || []).length > 0;
+    case "medications":
+      if (!medGoalsForDay || medGoalsForDay.length === 0) return true;
+      return medGoalsForDay.every(g => g.done);
+    default:
+      return true;
+  }
+}
+
+// enabledFeatures: member.enabled_features; d: day data blob (or {} if no entry);
+// medGoalsForDay: [{ id, target_count, count }] for that date's medication goals.
+function dayCompletionStatus(enabledFeatures, d, medGoalsForDay) {
+  const feats = enabledFeatures || {};
+  const active = CALENDAR_COMPLETION_FEATURES.filter(k => feats[k]);
+  if (active.length === 0) return "complete";
+  const allLogged = active.every(k => isCategoryLoggedForDay(k, d || {}, medGoalsForDay));
+  return allLogged ? "complete" : "incomplete";
+}
+
 function weightTrendFromEntries(pastEntries, currentDay, selectedDate) {
   const byDate = {};
   pastEntries.forEach(row => {
@@ -1460,6 +1518,325 @@ function DatePickerCalendar({
     }
   }, "Back to Today")));
 }
+function DayFlagPopover({ dateStr, existingNote, onClose, onSave, onRemove, saving }) {
+  const [note, setNote] = useState(existingNote || "");
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: { position: "fixed", inset: 0, background: "rgba(20,30,25,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 70 }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: { background: PALETTE.paper, borderRadius: 20, padding: 20, maxWidth: 340, width: "100%" }
+  },
+    /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: PALETTE.ink } }, "⭐ ", existingNote !== undefined && existingNote !== null ? "Edit flag" : "Flag ", fmtDate(dateStr)),
+    /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 10px", fontSize: 12, color: PALETTE.muted } }, "Mark this day so you can find it again later. A note is optional."),
+    /*#__PURE__*/React.createElement("textarea", {
+      value: note,
+      onChange: e => setNote(e.target.value),
+      placeholder: "What made this day worth remembering? (optional)",
+      rows: 3,
+      style: { width: "100%", borderRadius: 12, border: `1px solid ${PALETTE.line}`, padding: 10, fontSize: 13, fontFamily: "inherit", resize: "vertical", marginBottom: 12, background: PALETTE.cream, color: PALETTE.ink }
+    }),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8 } },
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => onSave(note),
+        disabled: saving,
+        style: { flex: 1, background: PALETTE.gold, color: "#fff", border: "none", borderRadius: 10, padding: "10px 0", fontSize: 13, fontWeight: 700, opacity: saving ? 0.6 : 1 }
+      }, saving ? "Saving..." : "⭐ Save flag"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: onClose,
+        style: { flex: 1, background: "none", border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: "10px 0", fontSize: 13, fontWeight: 600, color: PALETTE.ink }
+      }, "Cancel")
+    ),
+    onRemove && /*#__PURE__*/React.createElement("button", {
+      onClick: onRemove,
+      style: { width: "100%", marginTop: 8, background: "none", border: "none", color: "#B0507E", fontSize: 12, fontWeight: 600, padding: "6px 0" }
+    }, "Remove flag")
+  ));
+}
+
+function DaySummaryModal({ dateStr, d, medGoalsForDay, medGoalDefs, visits, voiceNotes, photos, flag, onClose, onEdit }) {
+  const avgW = d.checkins && d.checkins.length ? Math.round(d.checkins.reduce((s, c) => s + c.wellbeing, 0) / d.checkins.length) : null;
+  const dayVisits = (visits || []).filter(v => v.date === dateStr);
+  const dayNotes = (voiceNotes || []).filter(n => n.date === dateStr);
+  const dayPhotos = (photos || []).filter(p => p.date === dateStr);
+  const block = (bg, content) => /*#__PURE__*/React.createElement("div", { style: { background: bg, borderRadius: 10, padding: "8px 10px" } }, content);
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: { position: "fixed", inset: 0, background: "rgba(20,30,25,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: { background: PALETTE.paper, borderRadius: 24, padding: 22, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }
+  },
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 } },
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+        /*#__PURE__*/React.createElement("span", { style: { width: 32, height: 32, borderRadius: "50%", background: PALETTE.clay, color: "#fff", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" } }, avgW !== null ? avgW : "—"),
+        /*#__PURE__*/React.createElement("p", { className: "display", style: { margin: 0, fontSize: 17, fontWeight: 700, color: PALETTE.ink } }, fmtDate(dateStr))
+      ),
+      /*#__PURE__*/React.createElement("button", { onClick: onClose, style: { background: "none", border: "none", fontSize: 20, color: PALETTE.muted } }, "✕")
+    ),
+    flag && /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.gold + "22", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 13 } },
+      /*#__PURE__*/React.createElement("b", null, "⭐ Flagged"), flag.note ? ` — "${flag.note}"` : ""
+    ),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, fontSize: 13, marginBottom: 16 } },
+      (d.checkins || []).length > 0 && block(PALETTE.coral + "14", d.checkins.map(c => /*#__PURE__*/React.createElement("p", { key: c.id, style: { margin: 0 } }, wellbeingEmoji(c.wellbeing), " ", fmtTime(c.time), " — ", c.wellbeing, "/10 ", c.tags && c.tags.length > 0 && `(${c.tags.map(t => SYMPTOM_TAGS.find(s => s.key === t)?.label).join(", ")})`))),
+      (d.temps || []).length > 0 && block(PALETTE.coral + "14", d.temps.map(t => /*#__PURE__*/React.createElement("p", { key: t.id, style: { margin: 0 } }, "🌡️ ", t.value, "°F at ", fmtTime(t.time)))),
+      ((d.stools || []).length > 0 || (d.urine || []).length > 0) && block("#8B5E3C14", [
+        ...(d.stools || []).map(s => /*#__PURE__*/React.createElement("p", { key: s.id, style: { margin: 0 } }, "Bowel: Type ", s.typeId, " (", BRISTOL_TYPES.find(b => b.id === s.typeId)?.label, ") at ", fmtTime(s.time))),
+        ...(d.urine || []).map(u => /*#__PURE__*/React.createElement("p", { key: u.id, style: { margin: 0 } }, "Urine logged at ", fmtTime(u.time)))
+      ]),
+      (d.morning || d.afternoon || d.snack || d.dinner || beverageOzFromDay(d) > 0) && block("#E8A33D14", [
+        (d.morning || d.afternoon || d.snack || d.dinner) && /*#__PURE__*/React.createElement("p", { key: "meals", style: { margin: 0 } }, /*#__PURE__*/React.createElement("b", null, "Meals:"), " ", [d.morning, d.afternoon, d.snack, d.dinner].filter(Boolean).join(" · ")),
+        /*#__PURE__*/React.createElement("p", { key: "fluids", style: { margin: 0 } }, /*#__PURE__*/React.createElement("b", null, "Fluids:"), " ", beverageOzFromDay(d), " oz")
+      ]),
+      (d.remedies || []).length > 0 && block(PALETTE.sky + "14", d.remedies.map(r => /*#__PURE__*/React.createElement("p", { key: r.id, style: { margin: 0 } }, /*#__PURE__*/React.createElement("b", null, r.type, ":"), " ", fmtTime(r.startTime), r.endTime ? ` – ${fmtTime(r.endTime)} (${minutesBetween(r.startTime, r.endTime)} min)` : ""))),
+      d.workoutActivity && block(PALETTE.purple + "14", /*#__PURE__*/React.createElement("p", { style: { margin: 0 } }, /*#__PURE__*/React.createElement("b", null, "Workout:"), " ", d.workoutActivity, " ", d.workoutMinutes && `— ${d.workoutMinutes} min`)),
+      d.sleepHours && block(PALETTE.purple + "10", /*#__PURE__*/React.createElement("p", { style: { margin: 0 } }, /*#__PURE__*/React.createElement("b", null, "Sleep:"), " ", d.sleepHours, " hrs")),
+      (d.weightLogs || []).length > 0 && block(PALETTE.sageDeep + "14", /*#__PURE__*/React.createElement("p", { style: { margin: 0 } }, /*#__PURE__*/React.createElement("b", null, "Weight:"), " ", d.weightLogs[d.weightLogs.length - 1].value)),
+      medGoalDefs && medGoalDefs.length > 0 && block(PALETTE.sageDeep + "10", medGoalDefs.map(g => {
+        const status = medGoalsForDay.find(m => m.id === g.id);
+        return /*#__PURE__*/React.createElement("p", { key: g.id, style: { margin: 0 } }, status?.done ? "✅" : "⬜", " ", g.name);
+      })),
+      d.periodStatus && block("#D4547A14", /*#__PURE__*/React.createElement("p", { style: { margin: 0 } }, "🩸 ", d.periodStatus === "period" ? `Period${d.periodFlow ? ` (${d.periodFlow})` : ""}` : "Spotting")),
+      d.journal && block(PALETTE.sageDeep + "14", /*#__PURE__*/React.createElement("p", { style: { margin: 0, fontStyle: "italic" } }, "\"", d.journal, "\"")),
+      dayVisits.length > 0 && block(PALETTE.clay + "14", dayVisits.map(v => /*#__PURE__*/React.createElement("p", { key: v.id, style: { margin: 0 } }, "🩺 ", v.reason || "Doctor visit"))),
+      dayNotes.length > 0 && block(PALETTE.sky + "10", dayNotes.map(n => /*#__PURE__*/React.createElement("p", { key: n.id, style: { margin: 0 } }, "🎙️ ", n.title || "Voice note"))),
+      dayPhotos.length > 0 && block(PALETTE.gold + "10", dayPhotos.map(p => /*#__PURE__*/React.createElement("p", { key: p.id, style: { margin: 0 } }, "📷 ", p.title || "Photo"))),
+      Object.keys(d).length === 0 && /*#__PURE__*/React.createElement("p", { style: { color: PALETTE.muted, textAlign: "center", padding: "10px 0" } }, "Nothing logged this day.")
+    ),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: onEdit,
+      style: { width: "100%", background: PALETTE.sageDeep, color: "#fff", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 14, fontWeight: 700 }
+    }, "✏️ Edit this day")
+  ));
+}
+
+function HistoryCalendar({ activeMemberId, activeMember, goals, visits, voiceNotes, photos, onEditDate }) {
+  const today = todayStr();
+  const initial = new Date(today + "T00:00:00");
+  const [viewYear, setViewYear] = useState(initial.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial.getMonth());
+  const [entriesByDate, setEntriesByDate] = useState({});
+  const [medLogsByDate, setMedLogsByDate] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [allFlags, setAllFlags] = useState([]);
+  const [showFlaggedList, setShowFlaggedList] = useState(false);
+  const [selectedSummaryDate, setSelectedSummaryDate] = useState(null);
+  const [flagPopoverDate, setFlagPopoverDate] = useState(null);
+  const [savingFlag, setSavingFlag] = useState(false);
+
+  const medGoals = (goals || []).filter(g => g.kind === "medication");
+  const medGoalIds = medGoals.map(g => g.id);
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const monthStart = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-01`;
+  const monthEnd = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  useEffect(() => {
+    if (!activeMemberId || !sb) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const [entryRes, logRes] = await Promise.all([
+        sb.from("entries").select("*").eq("member_id", activeMemberId).gte("date", monthStart).lte("date", monthEnd),
+        medGoalIds.length > 0
+          ? sb.from("goal_logs").select("*").in("goal_id", medGoalIds).gte("date", monthStart).lte("date", monthEnd)
+          : Promise.resolve({ data: [] })
+      ]);
+      if (cancelled) return;
+      const eByDate = {};
+      (entryRes.data || []).forEach(r => { eByDate[r.date] = r.data || {}; });
+      setEntriesByDate(eByDate);
+      const mByDate = {};
+      (logRes.data || []).forEach(l => {
+        if (!mByDate[l.date]) mByDate[l.date] = {};
+        mByDate[l.date][l.goal_id] = l.count;
+      });
+      setMedLogsByDate(mByDate);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [activeMemberId, viewYear, viewMonth, medGoalIds.join(",")]);
+
+  const loadFlags = async () => {
+    if (!activeMemberId || !sb) return;
+    const { data } = await sb.from("day_flags").select("*").eq("member_id", activeMemberId).order("date", { ascending: false });
+    setAllFlags(data || []);
+  };
+  useEffect(() => { loadFlags(); }, [activeMemberId]);
+
+  const flagsByDate = {};
+  allFlags.forEach(f => { flagsByDate[f.date] = f; });
+  const voiceNoteDates = new Set((voiceNotes || []).map(n => n.date));
+  const photoDates = new Set((photos || []).map(p => p.date));
+
+  const medGoalsForDate = dateStr => medGoals.map(g => ({
+    id: g.id,
+    done: (medLogsByDate[dateStr]?.[g.id] || 0) >= (g.target_count || 1)
+  }));
+
+  const saveFlag = async note => {
+    setSavingFlag(true);
+    await sb.from("day_flags").upsert({ member_id: activeMemberId, date: flagPopoverDate, note: note.trim() || null }, { onConflict: "member_id,date" });
+    setSavingFlag(false);
+    setFlagPopoverDate(null);
+    loadFlags();
+  };
+
+  const removeFlag = async () => {
+    await sb.from("day_flags").delete().eq("member_id", activeMemberId).eq("date", flagPopoverDate);
+    setFlagPopoverDate(null);
+    loadFlags();
+  };
+
+  const startWeekday = new Date(viewYear, viewMonth, 1).getDay();
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  return /*#__PURE__*/React.createElement("section", { style: { marginBottom: 28 } },
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 } },
+      /*#__PURE__*/React.createElement("h2", { className: "display", style: { fontSize: 18, fontWeight: 600, margin: 0 } }, "History"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => setShowFlaggedList(v => !v),
+        style: { background: showFlaggedList ? PALETTE.gold + "33" : "none", border: `1px solid ${PALETTE.line}`, borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 700, color: PALETTE.ink }
+      }, "⭐ Flagged days", allFlags.length > 0 ? ` (${allFlags.length})` : "")
+    ),
+    showFlaggedList && /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.paper, border: `1px solid ${PALETTE.line}`, borderRadius: 14, padding: 12, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" } },
+      allFlags.length === 0 ? /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: PALETTE.muted, textAlign: "center", margin: 0 } }, "No flagged days yet — tap the star on any day to mark it.") :
+      allFlags.map(f => /*#__PURE__*/React.createElement("button", {
+        key: f.id,
+        onClick: () => {
+          const dt = new Date(f.date + "T00:00:00");
+          setViewYear(dt.getFullYear());
+          setViewMonth(dt.getMonth());
+          setSelectedSummaryDate(f.date);
+          setShowFlaggedList(false);
+        },
+        style: { textAlign: "left", background: PALETTE.cream, border: "none", borderRadius: 10, padding: "8px 10px", fontSize: 12, color: PALETTE.ink }
+      }, /*#__PURE__*/React.createElement("b", null, "⭐ ", fmtDate(f.date)), f.note ? ` — ${f.note}` : ""))
+    ),
+    /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.paper, border: `1px solid ${PALETTE.line}`, borderRadius: 20, padding: 16 } },
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 } },
+        /*#__PURE__*/React.createElement("button", { onClick: () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); }, style: { background: "none", border: "none", fontSize: 20, padding: 6, color: PALETTE.ink } }, "‹"),
+        /*#__PURE__*/React.createElement("p", { style: { fontWeight: 700, fontSize: 15, margin: 0 } }, monthLabel),
+        /*#__PURE__*/React.createElement("button", { onClick: () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); }, style: { background: "none", border: "none", fontSize: 20, padding: 6, color: PALETTE.ink } }, "›")
+      ),
+      /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, fontSize: 11, marginBottom: 4 } },
+        ["S", "M", "T", "W", "T", "F", "S"].map((d, i) => /*#__PURE__*/React.createElement("div", { key: i, style: { textAlign: "center", color: PALETTE.muted, fontWeight: 700 } }, d))
+      ),
+      /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 } },
+        cells.map((dateStr, i) => {
+          if (!dateStr) return /*#__PURE__*/React.createElement("div", { key: i });
+          const isFuture = dateStr > today;
+          const isToday = dateStr === today;
+          const status = isFuture ? "future" : dayCompletionStatus(activeMember?.enabled_features, entriesByDate[dateStr], medGoalsForDate(dateStr));
+          const flagged = !!flagsByDate[dateStr];
+          const hasAttachment = voiceNoteDates.has(dateStr) || photoDates.has(dateStr);
+          let bg = PALETTE.cream, border = "none";
+          if (status === "complete") { bg = PALETTE.sageDeep + "2a"; border = `1px solid ${PALETTE.sageDeep}55`; }
+          else if (status === "incomplete") { bg = "#B0507E1f"; border = "1px solid #B0507E55"; }
+          if (isToday) border = `2px solid ${PALETTE.sageDeep}`;
+          const pulse = isToday && status === "incomplete";
+          return /*#__PURE__*/React.createElement("div", { key: i, style: { position: "relative" } },
+            /*#__PURE__*/React.createElement("button", {
+              className: pulse ? "abe-pulse" : "",
+              disabled: isFuture,
+              onClick: () => setSelectedSummaryDate(dateStr),
+              style: { width: "100%", aspectRatio: "1", borderRadius: 10, fontSize: 12, fontWeight: isToday ? 800 : 500, background: bg, border, color: PALETTE.ink, opacity: isFuture ? 0.35 : 1 }
+            }, Number(dateStr.slice(-2))),
+            !isFuture && /*#__PURE__*/React.createElement("button", {
+              onClick: e => { e.stopPropagation(); setFlagPopoverDate(dateStr); },
+              style: { position: "absolute", top: -4, right: -4, background: "none", border: "none", fontSize: 12, padding: 2, lineHeight: 1, opacity: flagged ? 1 : 0.25 }
+            }, "⭐"),
+            hasAttachment && /*#__PURE__*/React.createElement("span", {
+              style: { position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", width: 4, height: 4, borderRadius: "50%", background: PALETTE.sky }
+            })
+          );
+        })
+      ),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12, fontSize: 10, color: PALETTE.muted } },
+        /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: PALETTE.sageDeep, marginRight: 4 } }), "Everything logged"),
+        /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#B0507E", marginRight: 4 } }), "Something missing"),
+        /*#__PURE__*/React.createElement("span", null, "⭐ Flagged"),
+        /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", { style: { display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: PALETTE.sky, marginRight: 4 } }), "Voice note / photo")
+      ),
+      loading && /*#__PURE__*/React.createElement("p", { style: { textAlign: "center", fontSize: 11, color: PALETTE.muted, marginTop: 8 } }, "Loading...")
+    ),
+    selectedSummaryDate && /*#__PURE__*/React.createElement(DaySummaryModal, {
+      dateStr: selectedSummaryDate,
+      d: entriesByDate[selectedSummaryDate] || {},
+      medGoalsForDay: medGoalsForDate(selectedSummaryDate),
+      medGoalDefs: medGoals,
+      visits,
+      voiceNotes,
+      photos,
+      flag: flagsByDate[selectedSummaryDate],
+      onClose: () => setSelectedSummaryDate(null),
+      onEdit: () => { onEditDate(selectedSummaryDate); setSelectedSummaryDate(null); }
+    }),
+    flagPopoverDate && /*#__PURE__*/React.createElement(DayFlagPopover, {
+      dateStr: flagPopoverDate,
+      existingNote: flagsByDate[flagPopoverDate]?.note,
+      saving: savingFlag,
+      onClose: () => setFlagPopoverDate(null),
+      onSave: saveFlag,
+      onRemove: flagsByDate[flagPopoverDate] ? removeFlag : null
+    })
+  );
+}
+
+function QuickAddDrink({ day, setDay, onDone }) {
+  const [slot, setSlot] = useState(guessMealSlot());
+  const [type, setType] = useState("");
+  const [customLabel, setCustomLabel] = useState("");
+  const [amount, setAmount] = useState("");
+  const [unit, setUnit] = useState("oz");
+  const SLOTS = [["morning", "Morning"], ["afternoon", "Afternoon"], ["snack", "Snack"], ["dinner", "Dinner"]];
+
+  const save = () => {
+    if (!type || !amount) return;
+    if (type === "Other" && !customLabel.trim()) return;
+    const finalType = type === "Other" ? customLabel.trim() : type;
+    const drinksKey = `${slot}Drinks`;
+    setDay(prev => ({ ...prev, [drinksKey]: [...(prev[drinksKey] || []), { id: uid("drink"), type: finalType, amount, unit }] }));
+    onDone();
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    style: { background: PALETTE.cream, borderRadius: 12, padding: 12, marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }
+  },
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+      SLOTS.map(([key, label]) => /*#__PURE__*/React.createElement("button", {
+        key,
+        onClick: () => setSlot(key),
+        style: { flex: 1, minWidth: 60, padding: "6px 0", borderRadius: 8, border: `1px solid ${slot === key ? PALETTE.sky : PALETTE.line}`, background: slot === key ? PALETTE.sky + "22" : PALETTE.paper, fontSize: 11, fontWeight: 700, color: PALETTE.ink }
+      }, label))
+    ),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+      /*#__PURE__*/React.createElement("select", {
+        value: type,
+        onChange: e => setType(e.target.value),
+        style: { borderRadius: 8, border: `1px solid ${PALETTE.line}`, padding: "6px 8px", fontSize: 13, background: PALETTE.paper }
+      }, /*#__PURE__*/React.createElement("option", { value: "" }, "Add a drink"), BEVERAGE_OPTIONS.map(o => /*#__PURE__*/React.createElement("option", { key: o, value: o }, o))),
+      type === "Other" && /*#__PURE__*/React.createElement("input", {
+        value: customLabel,
+        onChange: e => setCustomLabel(e.target.value),
+        placeholder: "What is it?",
+        style: { flex: 1, minWidth: 90, borderRadius: 8, border: `1px solid ${PALETTE.line}`, padding: "6px 8px", fontSize: 13 }
+      }),
+      type && /*#__PURE__*/React.createElement(React.Fragment, null,
+        /*#__PURE__*/React.createElement("input", { type: "number", min: "0", value: amount, onChange: e => setAmount(e.target.value), placeholder: "Amt", style: { width: 60, borderRadius: 8, border: `1px solid ${PALETTE.line}`, padding: "6px 8px", fontSize: 13 } }),
+        /*#__PURE__*/React.createElement("select", { value: unit, onChange: e => setUnit(e.target.value), style: { borderRadius: 8, border: `1px solid ${PALETTE.line}`, padding: "6px 8px", fontSize: 13, background: PALETTE.paper } },
+          /*#__PURE__*/React.createElement("option", { value: "oz" }, "oz"), /*#__PURE__*/React.createElement("option", { value: "ml" }, "ml"), /*#__PURE__*/React.createElement("option", { value: "cup" }, "cup")
+        ),
+        /*#__PURE__*/React.createElement("button", { onClick: save, style: { borderRadius: 8, border: "none", background: PALETTE.sky, color: "#fff", padding: "6px 12px", fontSize: 13, fontWeight: 700 } }, "Add"),
+        /*#__PURE__*/React.createElement("button", { onClick: onDone, style: { borderRadius: 8, border: "none", background: "none", color: PALETTE.muted, padding: "6px 8px", fontSize: 13 } }, "✕")
+      )
+    )
+  );
+}
+
 function WeightChart({
   points,
   onSelectDate,
@@ -1654,6 +2031,7 @@ function Dashboard({
   const [day, setDay] = useState(emptyDayData());
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showQuickAddDrink, setShowQuickAddDrink] = useState(false);
   const [dayLoaded, setDayLoaded] = useState(false);
   const [saveState, setSaveState] = useState("idle");
   const [goals, setGoals] = useState([]);
@@ -2608,17 +2986,23 @@ function Dashboard({
         meal: label
       }));
     });
-    if (allDrinks.length === 0) return null;
     return /*#__PURE__*/React.createElement("section", {
       style: {
         marginBottom: 28
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 10
       }
     }, /*#__PURE__*/React.createElement("h2", {
       className: "display",
       style: {
         fontSize: 18,
         fontWeight: 600,
-        marginBottom: 10,
+        margin: 0,
         display: "flex",
         alignItems: "center",
         gap: 8
@@ -2627,7 +3011,32 @@ function Dashboard({
       style: {
         color: PALETTE.sky
       }
-    }, "🥤"), " Beverages Today"), /*#__PURE__*/React.createElement("div", {
+    }, "🥤"), " Beverages Today"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowQuickAddDrink(v => !v),
+      style: {
+        background: showQuickAddDrink ? PALETTE.sky : PALETTE.sky + "22",
+        color: showQuickAddDrink ? "#fff" : PALETTE.sky,
+        border: "none",
+        borderRadius: 999,
+        width: 32,
+        height: 32,
+        fontSize: 18,
+        fontWeight: 700,
+        lineHeight: 1
+      }
+    }, showQuickAddDrink ? "✕" : "+")), showQuickAddDrink && /*#__PURE__*/React.createElement(QuickAddDrink, {
+      day: day,
+      setDay: setDay,
+      onDone: () => setShowQuickAddDrink(false)
+    }), allDrinks.length === 0 ? /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12,
+        color: PALETTE.muted,
+        textAlign: "center",
+        padding: "10px 0",
+        margin: showQuickAddDrink ? "10px 0 0" : 0
+      }
+    }, "No drinks logged yet today.") : /*#__PURE__*/React.createElement("div", {
       style: {
         background: PALETTE.paper,
         borderRadius: 16,
@@ -2635,7 +3044,8 @@ function Dashboard({
         padding: 14,
         display: "flex",
         flexDirection: "column",
-        gap: 8
+        gap: 8,
+        marginTop: showQuickAddDrink ? 10 : 0
       }
     }, allDrinks.map(d => /*#__PURE__*/React.createElement("div", {
       key: d.id,
@@ -4758,173 +5168,15 @@ function Dashboard({
     }
   }, fmtDate(p.date), p.category === "other" && p.custom_category ? ` · ${p.custom_category}` : ""), /*#__PURE__*/React.createElement(PhotoViewer, {
     photoPath: p.photo_path
-  }))))), pastEntries.length > 0 && /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", {
-    className: "display",
-    style: {
-      fontSize: 18,
-      fontWeight: 600,
-      marginBottom: 10
-    }
-  }, "Past entries"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 8
-    }
-  }, pastEntries.map(row => {
-    const open = expandedPast === row.id;
-    const d = row.data || {};
-    const avgW = d.checkins && d.checkins.length ? Math.round(d.checkins.reduce((s, c) => s + c.wellbeing, 0) / d.checkins.length) : null;
-    return /*#__PURE__*/React.createElement("div", {
-      key: row.id,
-      style: {
-        background: PALETTE.paper,
-        borderRadius: 14,
-        border: `1px solid ${PALETTE.line}`,
-        overflow: "hidden"
-      }
-    }, /*#__PURE__*/React.createElement("button", {
-      onClick: () => setExpandedPast(open ? null : row.id),
-      style: {
-        width: "100%",
-        background: "none",
-        border: "none",
-        padding: "12px 16px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        textAlign: "left"
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 10
-      }
-    }, /*#__PURE__*/React.createElement("span", {
-      style: {
-        width: 32,
-        height: 32,
-        borderRadius: "50%",
-        background: PALETTE.clay,
-        color: "#fff",
-        fontSize: 14,
-        fontWeight: 700,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center"
-      }
-    }, avgW !== null ? avgW : "—"), /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontSize: 14,
-        fontWeight: 600
-      }
-    }, fmtDate(row.date))), /*#__PURE__*/React.createElement("span", null, open ? "⌃" : "⌄")), open && /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: "0 16px 16px",
-        fontSize: 13,
-        borderTop: `1px solid ${PALETTE.line}`,
-        paddingTop: 12,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8
-      }
-    }, (d.checkins || []).length > 0 && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: PALETTE.coral + "14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, d.checkins.map(c => /*#__PURE__*/React.createElement("p", {
-      key: c.id,
-      style: {
-        margin: 0
-      }
-    }, wellbeingEmoji(c.wellbeing), " ", fmtTime(c.time), " — ", c.wellbeing, "/10 ", c.tags && c.tags.length > 0 && `(${c.tags.map(t => SYMPTOM_TAGS.find(s => s.key === t)?.label).join(", ")})`))), (d.temps || []).length > 0 && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: PALETTE.coral + "14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, d.temps.map(t => /*#__PURE__*/React.createElement("p", {
-      key: t.id,
-      style: {
-        margin: 0
-      }
-    }, "🌡️ ", t.value, "°F at ", fmtTime(t.time)))), ((d.stools || []).length > 0 || (d.urine || []).length > 0) && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: "#8B5E3C14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, (d.stools || []).map(s => /*#__PURE__*/React.createElement("p", {
-      key: s.id,
-      style: {
-        margin: 0
-      }
-    }, "Bowel: Type ", s.typeId, " (", BRISTOL_TYPES.find(b => b.id === s.typeId)?.label, ") at ", fmtTime(s.time))), (d.urine || []).map(u => /*#__PURE__*/React.createElement("p", {
-      key: u.id,
-      style: {
-        margin: 0
-      }
-    }, "Urine logged at ", fmtTime(u.time)))), (d.morning || d.afternoon || d.snack || d.dinner || beverageOzFromDay(d) > 0) && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: "#E8A33D14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, (d.morning || d.afternoon || d.snack || d.dinner) && /*#__PURE__*/React.createElement("p", {
-      style: {
-        margin: 0
-      }
-    }, /*#__PURE__*/React.createElement("b", null, "Meals:"), " ", [d.morning, d.afternoon, d.snack, d.dinner].filter(Boolean).join(" · ")), /*#__PURE__*/React.createElement("p", {
-      style: {
-        margin: 0
-      }
-    }, /*#__PURE__*/React.createElement("b", null, "Fluids:"), " ", beverageOzFromDay(d), " oz")), (d.remedies || []).length > 0 && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: PALETTE.sky + "14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, d.remedies.map(r => /*#__PURE__*/React.createElement("p", {
-      key: r.id,
-      style: {
-        margin: 0
-      }
-    }, /*#__PURE__*/React.createElement("b", null, r.type, ":"), " ", fmtTime(r.startTime), r.endTime ? ` – ${fmtTime(r.endTime)} (${minutesBetween(r.startTime, r.endTime)} min)` : ""))), d.workoutActivity && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: PALETTE.purple + "14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, /*#__PURE__*/React.createElement("p", {
-      style: {
-        margin: 0
-      }
-    }, /*#__PURE__*/React.createElement("b", null, "Workout:"), " ", d.workoutActivity, " ", d.workoutMinutes && `— ${d.workoutMinutes} min`)), d.periodStatus && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: "#D4547A14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, /*#__PURE__*/React.createElement("p", {
-      style: {
-        margin: 0
-      }
-    }, "🩸 ", d.periodStatus === "period" ? `Period${d.periodFlow ? ` (${d.periodFlow})` : ""}` : "Spotting")), d.journal && /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: PALETTE.sageDeep + "14",
-        borderRadius: 10,
-        padding: "8px 10px"
-      }
-    }, /*#__PURE__*/React.createElement("p", {
-      style: {
-        margin: 0,
-        fontStyle: "italic"
-      }
-    }, "\"", d.journal, "\""))));
-  }))), /*#__PURE__*/React.createElement("p", {
+  }))))), /*#__PURE__*/React.createElement(HistoryCalendar, {
+    activeMemberId: activeMemberId,
+    activeMember: activeMember,
+    goals: goals,
+    visits: visits,
+    voiceNotes: voiceNotes,
+    photos: photos,
+    onEditDate: d => setSelectedDate(d)
+  }), /*#__PURE__*/React.createElement("p", {
     style: {
       textAlign: "center",
       fontSize: 11,
@@ -8773,4 +9025,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.c
 </script>
 </body>
 </html>
-
