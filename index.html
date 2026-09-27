@@ -510,6 +510,26 @@ function dayCompletionStatus(enabledFeatures, d, medGoalsForDay) {
   return allLogged ? "complete" : "incomplete";
 }
 
+const CALENDAR_CATEGORY_LABELS = {
+  drinks: "Drinks",
+  meals: "Meals",
+  remedies: "Massage & Heat",
+  workout: "Workout",
+  digestive: "Bowel & Urine",
+  medications: "Medications & Vitamins",
+  sleep: "Sleep",
+  weight: "Weight"
+};
+
+// Returns [{ key, label }] for every enabled category NOT logged that day —
+// what to show someone tapping a red/incomplete day so they know what to catch up on.
+function missingCategoriesForDay(enabledFeatures, d, medGoalsForDay) {
+  const feats = enabledFeatures || {};
+  return CALENDAR_COMPLETION_FEATURES
+    .filter(k => feats[k] && !isCategoryLoggedForDay(k, d || {}, medGoalsForDay))
+    .map(k => ({ key: k, label: CALENDAR_CATEGORY_LABELS[k] || k }));
+}
+
 function weightTrendFromEntries(pastEntries, currentDay, selectedDate) {
   const byDate = {};
   pastEntries.forEach(row => {
@@ -1554,7 +1574,7 @@ function DayFlagPopover({ dateStr, existingNote, onClose, onSave, onRemove, savi
   ));
 }
 
-function DaySummaryModal({ dateStr, d, medGoalsForDay, medGoalDefs, visits, voiceNotes, photos, flag, onClose, onEdit }) {
+function DaySummaryModal({ dateStr, d, medGoalsForDay, medGoalDefs, visits, voiceNotes, photos, flag, missing, onClose, onEdit }) {
   const avgW = d.checkins && d.checkins.length ? Math.round(d.checkins.reduce((s, c) => s + c.wellbeing, 0) / d.checkins.length) : null;
   const dayVisits = (visits || []).filter(v => v.date === dateStr);
   const dayNotes = (voiceNotes || []).filter(n => n.date === dateStr);
@@ -1576,6 +1596,15 @@ function DaySummaryModal({ dateStr, d, medGoalsForDay, medGoalDefs, visits, voic
     ),
     flag && /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.gold + "22", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 13 } },
       /*#__PURE__*/React.createElement("b", null, "⭐ Flagged"), flag.note ? ` — "${flag.note}"` : ""
+    ),
+    missing && missing.length > 0 && /*#__PURE__*/React.createElement("div", { style: { background: "#B0507E1a", border: "1px solid #B0507E44", borderRadius: 12, padding: "10px 12px", marginBottom: 10 } },
+      /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#B0507E" } }, "⚠️ Not logged this day:"),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+        missing.map(m => /*#__PURE__*/React.createElement("span", {
+          key: m.key,
+          style: { fontSize: 12, fontWeight: 600, color: "#B0507E", background: "#B0507E22", borderRadius: 999, padding: "3px 10px" }
+        }, m.label))
+      )
     ),
     /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, fontSize: 13, marginBottom: 16 } },
       (d.checkins || []).length > 0 && block(PALETTE.coral + "14", d.checkins.map(c => /*#__PURE__*/React.createElement("p", { key: c.id, style: { margin: 0 } }, wellbeingEmoji(c.wellbeing), " ", fmtTime(c.time), " — ", c.wellbeing, "/10 ", c.tags && c.tags.length > 0 && `(${c.tags.map(t => SYMPTOM_TAGS.find(s => s.key === t)?.label).join(", ")})`))),
@@ -1772,6 +1801,7 @@ function HistoryCalendar({ activeMemberId, activeMember, goals, visits, voiceNot
       voiceNotes,
       photos,
       flag: flagsByDate[selectedSummaryDate],
+      missing: missingCategoriesForDay(activeMember?.enabled_features, entriesByDate[selectedSummaryDate], medGoalsForDate(selectedSummaryDate)),
       onClose: () => setSelectedSummaryDate(null),
       onEdit: () => { onEditDate(selectedSummaryDate); setSelectedSummaryDate(null); }
     }),
