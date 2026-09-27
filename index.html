@@ -8706,6 +8706,116 @@ function ResetPasswordScreen({
     }
   }, loading ? "Saving..." : "Save new password")));
 }
+function AnnouncementAdminPanel() {
+  const [current, setCurrent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [imageFile, setImageFile] = useState(null);
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState("");
+  const [clearing, setClearing] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await sb.from("announcements").select("*").eq("active", true).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    setCurrent(data || null);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const imageUrlFor = path => path ? sb.storage.from("avatars").getPublicUrl(path).data.publicUrl : null;
+
+  const post = async () => {
+    if (!message.trim()) return;
+    setPosting(true);
+    setError("");
+    try {
+      let imagePath = null;
+      if (imageFile) {
+        const ext = imageFile.name.split(".").pop();
+        imagePath = `announcements/${uid("ann")}.${ext}`;
+        const { error: upErr } = await sb.storage.from("avatars").upload(imagePath, imageFile);
+        if (upErr) throw upErr;
+      }
+      await sb.from("announcements").update({ active: false }).eq("active", true);
+      const { error: insErr } = await sb.from("announcements").insert({
+        id: uid("ann"),
+        message: message.trim(),
+        link_url: linkUrl.trim() || null,
+        link_label: linkLabel.trim() || null,
+        image_path: imagePath,
+        active: true
+      });
+      if (insErr) throw insErr;
+      setMessage(""); setLinkUrl(""); setLinkLabel(""); setImageFile(null);
+      load();
+    } catch (e) {
+      setError(e.message || "Couldn't post that — try again.");
+    }
+    setPosting(false);
+  };
+
+  const clearAnnouncement = async () => {
+    setClearing(true);
+    await sb.from("announcements").update({ active: false }).eq("active", true);
+    setClearing(false);
+    load();
+  };
+
+  return /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.paper, borderRadius: 16, border: `1px solid ${PALETTE.line}`, padding: 16, marginBottom: 20 } },
+    /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: PALETTE.ink } }, "📢 Announcement"),
+    !loading && current && /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.cream, borderRadius: 12, padding: 12, marginBottom: 12 } },
+      /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: PALETTE.muted, textTransform: "uppercase", letterSpacing: "0.05em" } }, current.image_path ? "Currently showing as a popup card" : "Currently showing as a banner"),
+      /*#__PURE__*/React.createElement("p", { style: { margin: 0, fontSize: 13, color: PALETTE.ink } }, current.message),
+      current.link_url && /*#__PURE__*/React.createElement("p", { style: { margin: "4px 0 0", fontSize: 12, color: PALETTE.sky } }, "🔗 ", current.link_label || current.link_url),
+      current.image_path && /*#__PURE__*/React.createElement("img", { src: imageUrlFor(current.image_path), style: { maxWidth: "100%", borderRadius: 10, marginTop: 8, maxHeight: 140, objectFit: "cover" } }),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: clearAnnouncement,
+        disabled: clearing,
+        style: { marginTop: 10, background: "none", border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, color: "#B0507E" }
+      }, clearing ? "Clearing..." : "Clear announcement")
+    ),
+    /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 8px", fontSize: 12, color: PALETTE.muted } }, "Post a new one — text-only shows as a banner strip until you clear it; add a picture and it shows once as a popup card instead."),
+    /*#__PURE__*/React.createElement("textarea", {
+      value: message,
+      onChange: e => setMessage(e.target.value),
+      placeholder: "What do you want to say? (e.g. Happy Holidays from all of us!)",
+      rows: 2,
+      style: { width: "100%", borderRadius: 10, border: `1px solid ${PALETTE.line}`, padding: 10, fontSize: 13, fontFamily: "inherit", resize: "vertical", marginBottom: 8 }
+    }),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" } },
+      /*#__PURE__*/React.createElement("input", {
+        value: linkUrl,
+        onChange: e => setLinkUrl(e.target.value),
+        placeholder: "Optional link (https://...)",
+        style: { flex: 2, minWidth: 160, padding: 8, borderRadius: 8, border: `1px solid ${PALETTE.line}`, fontSize: 12 }
+      }),
+      /*#__PURE__*/React.createElement("input", {
+        value: linkLabel,
+        onChange: e => setLinkLabel(e.target.value),
+        placeholder: "Link text (e.g. Learn more)",
+        style: { flex: 1, minWidth: 120, padding: 8, borderRadius: 8, border: `1px solid ${PALETTE.line}`, fontSize: 12 }
+      })
+    ),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+      /*#__PURE__*/React.createElement("input", {
+        type: "file",
+        accept: "image/*",
+        onChange: e => setImageFile(e.target.files[0] || null),
+        style: { fontSize: 12, flex: 1, minWidth: 160 }
+      }),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: post,
+        disabled: posting || !message.trim(),
+        style: { background: PALETTE.sageDeep, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700, opacity: posting || !message.trim() ? 0.6 : 1 }
+      }, posting ? "Posting..." : "Post announcement")
+    ),
+    error && /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#B0507E", marginTop: 8 } }, error)
+  );
+}
+
 function AdminDashboard({ onClose }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -8857,6 +8967,8 @@ function AdminDashboard({ onClose }) {
       inviteStatus === "error" && /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#B0507E", marginTop: 8 } }, inviteError)
     ),
 
+    /*#__PURE__*/React.createElement(AnnouncementAdminPanel, null),
+
     /*#__PURE__*/React.createElement("input", {
       value: search,
       onChange: e => setSearch(e.target.value),
@@ -8915,6 +9027,45 @@ function AdminDashboard({ onClose }) {
     filtered.length === 0 && !loading && !loadError && /*#__PURE__*/React.createElement("p", { style: { color: PALETTE.muted, fontSize: 13, textAlign: "center" } }, "No matching users.")
   );
 }
+function AnnouncementBanner({ announcement, onDismiss }) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: { background: PALETTE.sageDeep, color: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 13, flexWrap: "wrap", textAlign: "center" }
+  },
+    /*#__PURE__*/React.createElement("span", null, announcement.message),
+    announcement.link_url && /*#__PURE__*/React.createElement("a", {
+      href: announcement.link_url, target: "_blank", rel: "noopener noreferrer",
+      style: { color: "#fff", textDecoration: "underline", fontWeight: 700 }
+    }, announcement.link_label || "Learn more →"),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: onDismiss,
+      style: { background: "none", border: "none", color: "#fff", opacity: 0.8, fontSize: 15, marginLeft: 6, padding: 0 }
+    }, "✕")
+  );
+}
+
+function AnnouncementPopup({ announcement, imageUrl, onClose }) {
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: { position: "fixed", inset: 0, background: "rgba(20,30,25,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 100 }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: { background: PALETTE.paper, borderRadius: 24, overflow: "hidden", maxWidth: 380, width: "100%" }
+  },
+    imageUrl && /*#__PURE__*/React.createElement("img", { src: imageUrl, style: { width: "100%", maxHeight: 260, objectFit: "cover", display: "block" } }),
+    /*#__PURE__*/React.createElement("div", { style: { padding: 20, textAlign: "center" } },
+      /*#__PURE__*/React.createElement("p", { className: "display", style: { margin: "0 0 16px", fontSize: 16, color: PALETTE.ink, lineHeight: 1.5 } }, announcement.message),
+      announcement.link_url && /*#__PURE__*/React.createElement("a", {
+        href: announcement.link_url, target: "_blank", rel: "noopener noreferrer",
+        style: { display: "block", marginBottom: 12, fontSize: 13, fontWeight: 700, color: PALETTE.sageDeep }
+      }, announcement.link_label || "Learn more →"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: onClose,
+        style: { background: PALETTE.sageDeep, color: "#fff", border: "none", borderRadius: 999, padding: "10px 28px", fontSize: 13, fontWeight: 700 }
+      }, "Continue")
+    )
+  ));
+}
+
 const ADMIN_EMAIL = "choclaff@gmail.com";
 function App() {
   const [authUser, setAuthUser] = useState(null);
@@ -8922,11 +9073,29 @@ function App() {
   const [authError, setAuthError] = useState(null);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [announcement, setAnnouncement] = useState(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showAnnouncementPopup, setShowAnnouncementPopup] = useState(false);
   const [, setAppThemeTick] = useState(0);
   useEffect(() => {
     applyTheme(localStorage.getItem("abe_dark_mode") === "true", null);
     setAppThemeTick(t => t + 1);
   }, []);
+  useEffect(() => {
+    if (!authUser || !sb) return;
+    (async () => {
+      const { data } = await sb.from("announcements").select("*").eq("active", true).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (!data) return;
+      setAnnouncement(data);
+      if (data.image_path) {
+        const seenId = localStorage.getItem("abe_seen_popup_id");
+        if (seenId !== data.id) setShowAnnouncementPopup(true);
+      } else {
+        const dismissedId = sessionStorage.getItem("abe_dismissed_banner_id");
+        setBannerDismissed(dismissedId === data.id);
+      }
+    })();
+  }, [authUser]);
   useEffect(() => {
     let unsub = null;
     (async () => {
@@ -9021,6 +9190,15 @@ function App() {
   }
   const isAdmin = authUser.email === ADMIN_EMAIL;
   return /*#__PURE__*/React.createElement(React.Fragment, null,
+    !showAdmin && announcement && !announcement.image_path && !bannerDismissed && /*#__PURE__*/React.createElement(AnnouncementBanner, {
+      announcement: announcement,
+      onDismiss: () => { sessionStorage.setItem("abe_dismissed_banner_id", announcement.id); setBannerDismissed(true); }
+    }),
+    !showAdmin && showAnnouncementPopup && announcement && announcement.image_path && /*#__PURE__*/React.createElement(AnnouncementPopup, {
+      announcement: announcement,
+      imageUrl: sb.storage.from("avatars").getPublicUrl(announcement.image_path).data.publicUrl,
+      onClose: () => { localStorage.setItem("abe_seen_popup_id", announcement.id); setShowAnnouncementPopup(false); }
+    }),
     showAdmin && isAdmin ? /*#__PURE__*/React.createElement(AdminDashboard, {
       onClose: () => setShowAdmin(false)
     }) : /*#__PURE__*/React.createElement(Dashboard, {
