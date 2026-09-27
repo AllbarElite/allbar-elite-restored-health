@@ -8767,7 +8767,7 @@ function AnnouncementAdminPanel() {
   return /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.paper, borderRadius: 16, border: `1px solid ${PALETTE.line}`, padding: 16, marginBottom: 20 } },
     /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: PALETTE.ink } }, "📢 Announcement"),
     !loading && current && /*#__PURE__*/React.createElement("div", { style: { background: PALETTE.cream, borderRadius: 12, padding: 12, marginBottom: 12 } },
-      /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: PALETTE.muted, textTransform: "uppercase", letterSpacing: "0.05em" } }, current.image_path ? "Currently showing as a popup card" : "Currently showing as a banner"),
+      /*#__PURE__*/React.createElement("p", { style: { margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: PALETTE.muted, textTransform: "uppercase", letterSpacing: "0.05em" } }, current.image_path ? "Currently showing as a banner + a one-time popup card" : "Currently showing as a banner"),
       /*#__PURE__*/React.createElement("p", { style: { margin: 0, fontSize: 13, color: PALETTE.ink } }, current.message),
       current.link_url && /*#__PURE__*/React.createElement("p", { style: { margin: "4px 0 0", fontSize: 12, color: PALETTE.sky } }, "🔗 ", current.link_label || current.link_url),
       current.image_path && /*#__PURE__*/React.createElement("img", { src: imageUrlFor(current.image_path), style: { maxWidth: "100%", borderRadius: 10, marginTop: 8, maxHeight: 140, objectFit: "cover" } }),
@@ -9082,17 +9082,31 @@ function App() {
     setAppThemeTick(t => t + 1);
   }, []);
   useEffect(() => {
-    if (!authUser || !sb) return;
+    if (!authUser || !sb) {
+      setAnnouncement(null);
+      setBannerDismissed(false);
+      setShowAnnouncementPopup(false);
+      return;
+    }
     (async () => {
       const { data } = await sb.from("announcements").select("*").eq("active", true).order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (!data) return;
+      if (!data) {
+        setAnnouncement(null);
+        return;
+      }
       setAnnouncement(data);
+      // The banner always shows for any active announcement (with or without an
+      // image), and reappears each fresh login — dismissing it only hides it for
+      // the rest of THIS session, not forever.
+      const dismissedId = sessionStorage.getItem("abe_dismissed_banner_id");
+      setBannerDismissed(dismissedId === data.id);
+      // An announcement with an image also gets a one-time popup card, shown
+      // once per session (not forever) — it reappears on the next login too.
       if (data.image_path) {
-        const seenId = localStorage.getItem("abe_seen_popup_id");
-        if (seenId !== data.id) setShowAnnouncementPopup(true);
+        const seenId = sessionStorage.getItem("abe_seen_popup_id");
+        setShowAnnouncementPopup(seenId !== data.id);
       } else {
-        const dismissedId = sessionStorage.getItem("abe_dismissed_banner_id");
-        setBannerDismissed(dismissedId === data.id);
+        setShowAnnouncementPopup(false);
       }
     })();
   }, [authUser]);
@@ -9190,14 +9204,14 @@ function App() {
   }
   const isAdmin = authUser.email === ADMIN_EMAIL;
   return /*#__PURE__*/React.createElement(React.Fragment, null,
-    !showAdmin && announcement && !announcement.image_path && !bannerDismissed && /*#__PURE__*/React.createElement(AnnouncementBanner, {
+    !showAdmin && announcement && !bannerDismissed && /*#__PURE__*/React.createElement(AnnouncementBanner, {
       announcement: announcement,
       onDismiss: () => { sessionStorage.setItem("abe_dismissed_banner_id", announcement.id); setBannerDismissed(true); }
     }),
     !showAdmin && showAnnouncementPopup && announcement && announcement.image_path && /*#__PURE__*/React.createElement(AnnouncementPopup, {
       announcement: announcement,
       imageUrl: sb.storage.from("avatars").getPublicUrl(announcement.image_path).data.publicUrl,
-      onClose: () => { localStorage.setItem("abe_seen_popup_id", announcement.id); setShowAnnouncementPopup(false); }
+      onClose: () => { sessionStorage.setItem("abe_seen_popup_id", announcement.id); setShowAnnouncementPopup(false); }
     }),
     showAdmin && isAdmin ? /*#__PURE__*/React.createElement(AdminDashboard, {
       onClose: () => setShowAdmin(false)
@@ -9205,6 +9219,8 @@ function App() {
       authUser: authUser,
       onLogout: async () => {
         await sb.auth.signOut();
+        sessionStorage.removeItem("abe_dismissed_banner_id");
+        sessionStorage.removeItem("abe_seen_popup_id");
         setAuthUser(null);
       }
     }),
